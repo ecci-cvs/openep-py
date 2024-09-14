@@ -56,7 +56,6 @@ import numpy as np
 import scipy.io
 import pathlib
 
-
 from openep.data_structures.ablation import Ablation
 from openep.data_structures.case import Case
 from openep.data_structures.surface import Fields
@@ -109,22 +108,41 @@ def export_openCARP(
         comments='',
     )
 
-    # Save elements info
-    n_lines = case.indices.shape[0]
+    # Total number of lines
+    n_triangles = case.indices.shape[0]
+    n_lin_conns = 0 if case.arrows.linear_connections is None else case.arrows.linear_connections.shape[0]
+    n_lines = n_triangles + n_lin_conns
+
+    # Save triangulation elements info
+    cell_type = np.full(n_triangles, fill_value="Tr")
     cell_region = case.fields.cell_region if case.fields.cell_region is not None else np.zeros(n_triangles, dtype=int)
 
-    elem_data = ""
-    for indices, region in zip(case.indices, cell_region):
-        elem_data += 'Tr ' + ' '.join(map(str, indices)) + ' ' + str(region) + '\n'
+    combined_cell_data = [cell_type[:, np.newaxis], case.indices, cell_region[:, np.newaxis]]
+    combined_cell_data = np.concatenate(combined_cell_data, axis=1, dtype=object)
 
+    np.savetxt(
+        output_path.with_suffix(".elem"),
+        combined_cell_data,
+        fmt="%s %d %d %d %d",
+        header=str(n_lines),
+        comments='',
+    )
+
+    # Save linear connections info
     if case.arrows.linear_connections is not None:
-        n_lines += case.arrows.linear_connections.shape[0]
-        for indices in case.arrows.linear_connections:
-            elem_data += 'Ln ' + ' '.join(map(str, indices)) + '\n'
+        conn_type = np.full(n_lin_conns, fill_value="Ln")
+        ln_region = case.arrows.linear_connection_regions if case.arrows.linear_connection_regions is not None else np.zeros(n_lin_conns, dtype=int)
 
-    with open(output_path.with_suffix('.elem'), 'w') as file:
-        file.write(f'{n_lines}\n')
-        file.write(elem_data)
+        combined_ln_conn_data = [conn_type[:, np.newaxis], case.arrows.linear_connections, ln_region[:, np.newaxis]]
+        combined_ln_conn_data = np.concatenate(combined_ln_conn_data, axis=1, dtype=object)
+
+        # append to the elem file
+        with open(output_path.with_suffix(".elem"), 'a') as elem_file:
+            np.savetxt(
+                elem_file,
+                combined_ln_conn_data,
+                fmt="%s %d %d %d",
+            )
 
     # Save fibres
     if case.arrows.fibres is not None:
@@ -141,7 +159,7 @@ def export_openCARP(
 
     # Ignore all -1 values, as these points do not belong to any pacing site
     for site_index in np.unique(case.fields.pacing_site)[1:]:
-        
+
         pacing_site_points = np.nonzero(case.fields.pacing_site == site_index)[0]
         n_points = pacing_site_points.size
 
@@ -240,7 +258,9 @@ def export_openep_mat(
             divergence=case.analyse.divergence
         )
 
-    userdata['rf'] = _export_ablation_data(ablation=case.ablation)
+    if case.ablation is not None:
+        userdata['rf'] = _export_ablation_data(ablation=case.ablation)
+
     scipy.io.savemat(
         file_name=filename,
         mdict={'userdata': userdata},
@@ -276,7 +296,7 @@ def _add_surface_maps(surface_data, **kwargs):
 
 
 def export_csv(
-        case: Case,
+        system,
         filename: str,
         selections: dict,
 ):
@@ -286,10 +306,17 @@ def export_csv(
     Saves selected field data.
 
     Args:
-        case (Case): dataset to be exported
+        system (model.system_manager.System): System with dataset to be exported
         filename (str): name of file to be written
         selections (dict): the data field name and flag whether to export or not
     """
+    case = system.case
+    mesh = system.mesh
+
+    point_region = _convert_cell_to_point(
+        cell_data=case.fields.cell_region,
+        mesh=mesh
+    )
 
     available_exports = {
         'Bipolar voltage': case.fields.bipolar_voltage,
@@ -298,10 +325,11 @@ def export_csv(
         'Force': case.fields.force,
         'Impedance': case.fields.impedance,
         'Thickness': case.fields.thickness,
-        'Cell region': case.fields.cell_region,
+        'Cell region': point_region,
         'Pacing site': case.fields.pacing_site,
         'Conduction velocity': case.fields.conduction_velocity,
         'Divergence': case.fields.cv_divergence,
+        'Histogram': case.fields.histogram,
     }
 
     df = pd.DataFrame()
@@ -556,3 +584,18 @@ def _export_ablation_data(ablation: Ablation):
     ablation_data['originaldata']['force']['position'] = ablation.force.points if ablation.force.points is not None else empty_float_array
 
     return ablation_data
+
+
+def _convert_cell_to_point(cell_data, mesh):
+    """Convert cell data to point data by applying the cell value to its vertices"""
+    point_data = np.zeros(mesh.n_points, dtype=int)
+    for cell_i in range(mesh.n_cells):
+
+        cell_value = cell_data[cell_i]
+        point_ids = mesh.get_cell(cell_i).point_ids
+
+        # Add cell value to point ids
+        for pid in point_ids:
+            point_data[pid] = cell_value
+
+    return point_data
