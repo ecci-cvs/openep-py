@@ -36,7 +36,7 @@ class Fields:
         local_activation_time (np.ndarray): array of shape N_points
         impedance (np.ndarray): array of shape N_points
         force (np.ndarray): array of shape N_points
-        region (np.ndarray): array of shape N_cells
+        cell_region (np.ndarray): array of shape N_cells
         longitudinal_fibres (np.ndarray): array of shape N_cells x 3
         transverse_fibres (np.ndarray): array of shape N_cells x 3
         pacing_site (np.ndarray): array of shape N_points
@@ -54,6 +54,7 @@ class Fields:
     pacing_site: np.ndarray = None
     conduction_velocity: np.ndarray = None
     cv_divergence: np.ndarray = None
+    histogram: np.ndarray = None
 
     def __repr__(self):
         return f"fields: {tuple(self.__dict__.keys())}"

@@ -258,7 +258,9 @@ def export_openep_mat(
             divergence=case.analyse.divergence
         )
 
-    userdata['rf'] = _export_ablation_data(ablation=case.ablation)
+    if case.ablation is not None:
+        userdata['rf'] = _export_ablation_data(ablation=case.ablation)
+
     scipy.io.savemat(
         file_name=filename,
         mdict={'userdata': userdata},
@@ -294,7 +296,7 @@ def _add_surface_maps(surface_data, **kwargs):
 
 
 def export_csv(
-        case: Case,
+        system,
         filename: str,
         selections: dict,
 ):
@@ -304,10 +306,17 @@ def export_csv(
     Saves selected field data.
 
     Args:
-        case (Case): dataset to be exported
+        system (model.system_manager.System): System with dataset to be exported
         filename (str): name of file to be written
         selections (dict): the data field name and flag whether to export or not
     """
+    case = system.case
+    mesh = system.mesh
+
+    point_region = _convert_cell_to_point(
+        cell_data=case.fields.cell_region,
+        mesh=mesh
+    )
 
     available_exports = {
         'Bipolar voltage': case.fields.bipolar_voltage,
@@ -316,10 +325,11 @@ def export_csv(
         'Force': case.fields.force,
         'Impedance': case.fields.impedance,
         'Thickness': case.fields.thickness,
-        'Cell region': case.fields.cell_region,
+        'Cell region': point_region,
         'Pacing site': case.fields.pacing_site,
         'Conduction velocity': case.fields.conduction_velocity,
         'Divergence': case.fields.cv_divergence,
+        'Histogram': case.fields.histogram,
     }
 
     df = pd.DataFrame()
@@ -574,3 +584,18 @@ def _export_ablation_data(ablation: Ablation):
     ablation_data['originaldata']['force']['position'] = ablation.force.points if ablation.force.points is not None else empty_float_array
 
     return ablation_data
+
+
+def _convert_cell_to_point(cell_data, mesh):
+    """Convert cell data to point data by applying the cell value to its vertices"""
+    point_data = np.zeros(mesh.n_points, dtype=int)
+    for cell_i in range(mesh.n_cells):
+
+        cell_value = cell_data[cell_i]
+        point_ids = mesh.get_cell(cell_i).point_ids
+
+        # Add cell value to point ids
+        for pid in point_ids:
+            point_data[pid] = cell_value
+
+    return point_data
