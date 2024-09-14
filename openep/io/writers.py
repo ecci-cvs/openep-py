@@ -258,7 +258,9 @@ def export_openep_mat(
             divergence=case.analyse.divergence
         )
 
-    userdata['rf'] = _export_ablation_data(ablation=case.ablation)
+    if case.ablation is not None:
+        userdata['rf'] = _export_ablation_data(ablation=case.ablation)
+
     scipy.io.savemat(
         file_name=filename,
         mdict={'userdata': userdata},
