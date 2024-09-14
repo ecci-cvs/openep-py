@@ -162,7 +162,9 @@ def load_opencarp(
     points_data *= scale_points
     fibres_data = None if fibres is None else np.loadtxt(fibres)
 
-    indices_data, cell_region_data, linear_connection_data = [], [], []
+    indices_data, cell_region_data = [], []
+    linear_connection_data, linear_connection_regions = [], []
+
     with open(indices) as elem_file:
         data = elem_file.readlines()
         for elem in data:
@@ -171,14 +173,18 @@ def load_opencarp(
                 indices_data.append(list(map(int, parts[1:4])))
                 cell_region_data.append(int(parts[4]))
             elif parts[0] == 'Ln':
-                linear_connection_data.append(list(map(int, parts[1:4])))
+                linear_connection_data.append(list(map(int, parts[1:3])))
+                linear_connection_regions.append(int(parts[3]))
+
     indices_data = np.array(indices_data)
     cell_region = np.array(cell_region_data)
     linear_connection_data = np.array(linear_connection_data)
+    linear_connection_regions = np.array(linear_connection_regions)
 
     arrows = Arrows(
         fibres=fibres_data,
-        linear_connections=linear_connection_data
+        linear_connections=linear_connection_data,
+        linear_connection_regions=linear_connection_regions
     )
 
     fields = Fields(
