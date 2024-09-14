@@ -13,6 +13,7 @@ class Arrows:
         fibres (np.ndarray): array of shape N_cells x 3
         divergence (np.ndarray): array of shape N_cells x 3
         linear_connections (np.ndarray): array of shape M x 3 (represents the linear connections between endo and epi)
+        linear_connection_regions (np.ndarray): array of shape N_cells
     """
 
     # TODO: move divergence arrows into Arrows class
@@ -20,6 +21,7 @@ class Arrows:
     fibres: np.ndarray = None
     divergence: np.ndarray = None
     linear_connections: np.ndarray = None
+    linear_connection_regions: np.ndarray = None
 
     def __repr__(self):
         return f"arrows: {tuple(self.__dict__.keys())}"
@@ -40,6 +42,13 @@ class Arrows:
 
     def __contains__(self, arrow):
         return arrow in self.__dict__.keys()
+
+    @property
+    def linear_connection_regions_names(self):
+        if self.linear_connection_regions is None:
+            return []
+        regions = np.unique(self.linear_connection_regions).astype(str)
+        return regions.tolist()
 
     def copy(self):
         """Create a deep copy of Arrows"""
