@@ -87,6 +87,7 @@ from .arrows import Arrows
 from .electric import Electric, Electrogram, Annotations, ElectricSurface
 from .ablation import Ablation
 from ..analysis.analyse import Analyse
+from ..analysis.preprocess import Preprocess
 from ..case.case_routines import (
     bipolar_from_unipolar_surface_points,
     calculate_distance,
@@ -135,6 +136,7 @@ class Case:
         self.notes = notes
         self.arrows = Arrows() if arrows is None else arrows
         self.analyse = Analyse(case=self)
+        self.preprocess = Preprocess(case=self)
 
     def __repr__(self):
         return f"{self.name}( nodes: {self.points.shape} indices: {self.indices.shape} {self.fields} )"
