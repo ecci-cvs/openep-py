@@ -335,12 +335,13 @@ def export_csv(
     df = pd.DataFrame()
 
     for field_name, checked in selections.items():
+        header = field_name.lower().replace(" ", "_")
         if checked:
             field_data = available_exports.get(field_name)
             if field_data is not None:
-                df[field_name] = pd.Series(field_data)
+                df[header] = pd.Series(field_data)
             else:
-                df[field_name] = pd.NA
+                df[header] = pd.NA
 
     df.to_csv(filename, index=False, encoding='utf-8')
 
