@@ -18,7 +18,6 @@
 
 """Module containing classes for storing electrogram data."""
 
-from threading import local
 from attr import attrs, field
 import numpy as np
 

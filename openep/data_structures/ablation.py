@@ -18,10 +18,11 @@
 
 """Module containing classes for storing ablation data."""
 
+from openep.data_structures.electric import LandmarkPoints
 from attr import attrs
 import numpy as np
 
-__all__ = []
+__all__ = ['Ablation', 'AblationForce', 'AblationAutoIndex']
 
 
 @attrs(auto_attribs=True, auto_detect=True)
@@ -58,6 +59,76 @@ class AblationForce:
 
         return ablation_force
 
+class AblationAutoIndex:
+    """Class for storing automatically collected ablation data.
+
+    NOTE:
+        This data is equivalent to .rfindex struct in the openep.mat files.
+        It stores Carto3 Visitag automated  ablation tag data.
+
+    Args:
+        times (np.ndarray): array of shape N,
+            Time stamp of each tag
+
+        average_force (np.ndarray): array of shape N,
+            Average force applied at each tag
+
+        max_temp (np.ndarray): array of shape N,
+            Maximum recorded catheter tip temperature at each tag
+
+        max_power (np.ndarray): array of shape N,
+            Maximum applied radiofrequency power at each tag
+
+        force_time_integral (np.ndarray): array of shape N,
+            Force time integral calculated at each tag
+
+        ablation_points (LandmarkPoints): has .points attribute with array of shape Nx3,
+            LandmarkPoints containing Cartesian co-ordinates of each tag
+    """
+
+
+    def __init__(
+            self,
+            times: np.ndarray = None,
+            average_force: np.ndarray = None,
+            max_temp: np.ndarray = None,
+            max_power: np.ndarray = None,
+            force_time_integral: np.ndarray = None,
+            points: np.ndarray = None,
+    ):
+        self.times = times
+        self.average_force = average_force
+        self.max_temp = max_temp
+        self.max_power = max_power
+        self.force_time_integral = force_time_integral
+
+        self._is_ablation = np.full_like(
+            self.times,
+            fill_value=True,
+            dtype=bool,
+        )
+
+        self.ablation_points = LandmarkPoints(
+            points=points,
+            is_landmark=self._is_ablation,
+        )
+
+    def __repr__(self):
+        return f"Ablation Auto Index (rfindex) with {len(self.times)} sites."
+
+    def copy(self):
+        """Create a deep copy of AblationAutoIndex"""
+        ablation_auto_index = AblationAutoIndex(
+            times=np.array(self.times) if self.times is not None else None,
+            average_force=np.array(self.average_force) if self.average_force is not None else None,
+            max_temp=np.array(self.max_temp) if self.max_temp is not None else None,
+            max_power=np.array(self.max_power) if self.max_power is not None else None,
+            force_time_integral=np.array(self.force_time_integral) if self.force_time_integral is not None else None,
+            points=np.array(self.points) if self.points is not None else None,
+        )
+        return ablation_auto_index
+
+
 @attrs(auto_attribs=True, auto_detect=True)
 class Ablation:
     """
@@ -71,6 +142,8 @@ class Ablation:
         force (AblationForce): data on the force at each ablation site. Specifically, the
             force applied, the time at which it was applied, and axial and lateral angles,
             and the 3D coordinates of the ablation site.
+        auto_index (AblationAutoIndex): automatically acquired ablation site data from systems
+            like Carto3 Visitag module
     """
 
     times: np.ndarray = None
@@ -78,6 +151,7 @@ class Ablation:
     impedance: np.ndarray = None
     temperature: np.ndarray = None
     force: AblationForce = None
+    auto_index: AblationAutoIndex = None
 
     def __attrs_post_init__(self):
 
@@ -97,12 +171,13 @@ class Ablation:
             impedance=np.array(self.impedance) if self.impedance is not None else None,
             temperature=np.array(self.temperature) if self.temperature is not None else None,
             force=self.force.copy(),
+            auto_index=self.auto_index.copy(),
         )
 
         return ablation
 
 
-def extract_ablation_data(ablation_data):
+def extract_ablation_data(ablation_data, rfindex_data=None):
     """Extract surface data from a dictionary.
 
     Args:
@@ -113,35 +188,41 @@ def extract_ablation_data(ablation_data):
         ablation (Ablation): times, power, impedance and temperature for each ablation site,
             as well as the force applied.
     """
+    ablation = Ablation()
 
-    if isinstance(ablation_data, np.ndarray):
-        return Ablation()
+    # Add rf_index data from openep.mat if present
+    if rfindex_data is None or isinstance(rfindex_data, np.ndarray):
+        ablation.auto_index = AblationAutoIndex()
+    else:
+        ablation.auto_index = AblationAutoIndex(
+            times=rfindex_data['tag']['time'].astype(float),
+            average_force=rfindex_data['tag']['avgForce'].astype(float),
+            max_temp=rfindex_data['tag']['maxTemp'].astype(float),
+            max_power=rfindex_data['tag']['maxPower'].astype(float),
+            force_time_integral=rfindex_data['tag']['fti'].astype(float),
+            points=rfindex_data['tag']['X'].astype(float)
+        )
+
+    if ablation_data is None or isinstance(ablation_data, np.ndarray):
+        return ablation
 
     try:
         if not ablation_data['originaldata']['ablparams']['time'].size:
-            return Ablation()
+            return ablation
     except KeyError as e:
-        return Ablation()
+        return ablation
 
-    times = ablation_data['originaldata']['ablparams']['time'].astype(float)
-    power = ablation_data['originaldata']['ablparams']['power'].astype(float)
-    impedance = ablation_data['originaldata']['ablparams']['impedance'].astype(float)
-    temperature = ablation_data['originaldata']['ablparams']['distaltemp'].astype(float)
+    ablation.times = ablation_data['originaldata']['ablparams']['time'].astype(float)
+    ablation.power = ablation_data['originaldata']['ablparams']['power'].astype(float)
+    ablation.impedance = ablation_data['originaldata']['ablparams']['impedance'].astype(float)
+    ablation.temperature = ablation_data['originaldata']['ablparams']['distaltemp'].astype(float)
 
-    force = AblationForce(
+    ablation.force = AblationForce(
         times=ablation_data['originaldata']['force']['time'].astype(float),
         force=ablation_data['originaldata']['force']['force'].astype(float),
         axial_angle=ablation_data['originaldata']['force']['axialangle'].astype(float),
         lateral_angle=ablation_data['originaldata']['force']['lateralangle'].astype(float),
         points=ablation_data['originaldata']['force']['position'].astype(float),
-    )
-
-    ablation = Ablation(
-        times=times,
-        power=power,
-        impedance=impedance,
-        temperature=temperature,
-        force=force,
     )
 
     return ablation

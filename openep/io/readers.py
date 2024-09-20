@@ -117,7 +117,7 @@ def load_openep_mat(filename, name=None):
 
     points, indices, fields = extract_surface_data(data['surface'])
     electric = extract_electric_data(data['electric'])
-    ablation = extract_ablation_data(data['rf']) if 'rf' in data else None
+    ablation = extract_ablation_data(data.get('rf'), data.get('rfindex'))
 
     if 'notes' in data:
         notes = np.asarray([data['notes']])[:, np.newaxis] if isinstance(data['notes'], str) else np.asarray(data['notes']).reshape(-1, 1)
