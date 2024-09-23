@@ -83,7 +83,7 @@ import scipy.stats
 import pyvista
 
 from .surface import Fields
-from .arrows import Arrows
+from .vectors import Vectors
 from .electric import Electric, Electrogram, Annotations, ElectricSurface
 from .ablation import Ablation
 from ..analysis.analyse import Analyse
@@ -124,7 +124,7 @@ class Case:
         electric: Electric,
         ablation: Optional[Ablation] = None,
         notes: Optional[List] = None,
-        arrows: Optional[Arrows] = None,
+        vectors: Optional[Vectors] = None,
     ):
 
         self.name = name
@@ -134,7 +134,7 @@ class Case:
         self.ablation = ablation
         self.electric = electric
         self.notes = notes
-        self.arrows = Arrows() if arrows is None else arrows
+        self.vectors = Vectors() if vectors is None else vectors
         self.analyse = Analyse(case=self)
         self.preprocess = Preprocess(case=self)
 

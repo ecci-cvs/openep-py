@@ -5,9 +5,9 @@ __all__ = []
 
 
 @attrs(auto_attribs=True, auto_detect=True)
-class Arrows:
+class Vectors:
     """
-    Class for storing information about arrows and lines on surface
+    Class for storing information about arrows/vectors and lines on surface
 
     Args:
         fibres (np.ndarray): array of shape N_cells x 3
@@ -24,17 +24,17 @@ class Arrows:
     linear_connection_regions: np.ndarray = None
 
     def __repr__(self):
-        return f"arrows: {tuple(self.__dict__.keys())}"
+        return f"vectors: {tuple(self.__dict__.keys())}"
 
     def __getitem__(self, arrow):
         try:
             return self.__dict__[arrow]
         except KeyError:
-            raise ValueError(f"There is no arrow '{arrow}'.")
+            raise ValueError(f"There is no vector '{arrow}'.")
 
     def __setitem__(self, arrow, value):
         if arrow not in self.__dict__.keys():
-            raise ValueError(f"'{arrow}' is not a valid arrow name.")
+            raise ValueError(f"'{arrow}' is not a valid vector name.")
         self.__dict__[arrow] = value
 
     def __iter__(self):
@@ -53,7 +53,7 @@ class Arrows:
     def copy(self):
         """Create a deep copy of Arrows"""
 
-        arrows = Arrows()
+        arrows = Vectors()
         for arrow in self:
             if self[arrow] is None:
                 continue
