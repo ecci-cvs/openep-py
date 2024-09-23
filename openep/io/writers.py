@@ -110,7 +110,7 @@ def export_openCARP(
 
     # Total number of lines
     n_triangles = case.indices.shape[0]
-    n_lin_conns = 0 if case.arrows.linear_connections is None else case.arrows.linear_connections.shape[0]
+    n_lin_conns = 0 if case.vectors.linear_connections is None else case.vectors.linear_connections.shape[0]
     n_lines = n_triangles + n_lin_conns
 
     # Save triangulation elements info
@@ -129,11 +129,11 @@ def export_openCARP(
     )
 
     # Save linear connections info
-    if case.arrows.linear_connections is not None:
+    if case.vectors.linear_connections is not None:
         conn_type = np.full(n_lin_conns, fill_value="Ln")
-        ln_region = case.arrows.linear_connection_regions if case.arrows.linear_connection_regions is not None else np.zeros(n_lin_conns, dtype=int)
+        ln_region = case.vectors.linear_connection_regions if case.vectors.linear_connection_regions is not None else np.zeros(n_lin_conns, dtype=int)
 
-        combined_ln_conn_data = [conn_type[:, np.newaxis], case.arrows.linear_connections, ln_region[:, np.newaxis]]
+        combined_ln_conn_data = [conn_type[:, np.newaxis], case.vectors.linear_connections, ln_region[:, np.newaxis]]
         combined_ln_conn_data = np.concatenate(combined_ln_conn_data, axis=1, dtype=object)
 
         # append to the elem file
@@ -145,10 +145,10 @@ def export_openCARP(
             )
 
     # Save fibres
-    if case.arrows.fibres is not None:
+    if case.vectors.fibres is not None:
         np.savetxt(
             output_path.with_suffix('.lon'),
-            case.arrows.fibres,
+            case.vectors.fibres,
             fmt="%.6f",
             comments='',
         )
