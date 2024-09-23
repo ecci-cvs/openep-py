@@ -124,7 +124,14 @@ def load_openep_mat(filename, name=None):
     else:
         notes = np.asarray([""], dtype=str)[:, np.newaxis]
 
-    return Case(name, points, indices, fields, electric, ablation, notes)
+    # Fibres data - creates dummy fibres (.lon) data
+    # TODO: Load fibre data from openep.mat
+    fibres_data = np.tile([1, 0, 0], (len(indices), 1))
+    vectors = Vectors(
+        fibres=fibres_data,
+    )
+
+    return Case(name, points, indices, fields, electric, ablation=ablation, notes=notes, vectors=vectors)
 
 
 def load_opencarp(
@@ -158,13 +165,14 @@ def load_opencarp(
 
     name = os.path.basename(points) if name is None else name
 
+    # pts data
     points_data = np.loadtxt(points, skiprows=1)
     points_data *= scale_points
-    fibres_data = None if fibres is None else np.loadtxt(fibres)
 
     indices_data, cell_region_data = [], []
     linear_connection_data, linear_connection_regions = [], []
 
+    # elem data
     with open(indices) as elem_file:
         data = elem_file.readlines()
         for elem in data:
@@ -181,17 +189,24 @@ def load_opencarp(
     linear_connection_data = np.array(linear_connection_data)
     linear_connection_regions = np.array(linear_connection_regions)
 
-    arrows = Arrows(
-        fibres=fibres_data,
-        linear_connections=linear_connection_data,
-        linear_connection_regions=linear_connection_regions
-    )
-
     fields = Fields(
         cell_region=cell_region,
         longitudinal_fibres=None,
         transverse_fibres=None,
     )
+
+    # Fibres data
+    if fibres is None:
+        fibres_data = np.tile([1, 0, 0], (len(data)-1, 1))
+    else:
+        fibres_data = np.loadtxt(fibres)
+
+    arrows = Vectors(
+        fibres=fibres_data,
+        linear_connections=linear_connection_data,
+        linear_connection_regions=linear_connection_regions
+    )
+
     electric = Electric()
     ablation = Ablation()
     notes = np.asarray([], dtype=object)
@@ -217,6 +232,12 @@ def load_vtk(filename, name=None):
     name = name if name is not None else os.path.basename(filename)
     mesh = pyvista.read(filename)
 
+    # fibres data
+    fibres_data = np.tile([1, 0, 0], (mesh.n_points-1, 1))
+    vectors = Vectors(
+        fibres=fibres_data,
+    )
+
     case = Case(
         name=name,
         points=mesh.points,
@@ -224,6 +245,7 @@ def load_vtk(filename, name=None):
         fields=Fields.from_pyvista(mesh),
         electric = Electric(),
         ablation = Ablation(),
+        vectors=vectors,
         notes = np.asarray([], dtype=object),
     )
 
