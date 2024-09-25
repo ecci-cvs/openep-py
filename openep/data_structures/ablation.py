@@ -101,12 +101,7 @@ class AblationAutoIndex:
         self.max_temp = max_temp
         self.max_power = max_power
         self.force_time_integral = force_time_integral
-
-        self._is_ablation = np.full_like(
-            self.times,
-            fill_value=True,
-            dtype=bool,
-        )
+        self._is_ablation = np.ones(points.shape[0], dtype=bool)
 
         self.ablation_points = LandmarkPoints(
             points=points,
@@ -115,6 +110,15 @@ class AblationAutoIndex:
 
     def __repr__(self):
         return f"Ablation Auto Index (rfindex) with {len(self.times)} sites."
+
+    def add_ablation_site(self, points):
+        """Add new ablation site(s) as Landmark Point"""
+        new_points = np.append(self.ablation_points.points, np.array([points]), axis=0)
+        self._is_ablation = np.ones(new_points.shape[0], dtype=bool)
+        self.ablation_points = LandmarkPoints(
+            points=new_points,
+            is_landmark=self._is_ablation,
+        )
 
     def copy(self):
         """Create a deep copy of AblationAutoIndex"""
