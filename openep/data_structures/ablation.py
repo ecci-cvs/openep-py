@@ -82,10 +82,10 @@ class AblationAutoIndex:
         force_time_integral (np.ndarray): array of shape N,
             Force time integral calculated at each tag
 
+    Attribute:
         ablation_points (LandmarkPoints): has .points attribute with array of shape Nx3,
             LandmarkPoints containing Cartesian co-ordinates of each tag
     """
-
 
     def __init__(
             self,
@@ -101,7 +101,7 @@ class AblationAutoIndex:
         self.max_temp = max_temp
         self.max_power = max_power
         self.force_time_integral = force_time_integral
-        self._is_ablation = np.ones(points.shape[0], dtype=bool)
+        self._is_ablation = np.ones(points.shape[0], dtype=bool) if points is not None else None
 
         self.ablation_points = LandmarkPoints(
             points=points,
@@ -113,8 +113,12 @@ class AblationAutoIndex:
 
     def add_ablation_site(self, points):
         """Add new ablation site(s) as Landmark Point"""
-        new_points = np.append(self.ablation_points.points, np.array([points]), axis=0)
-        self._is_ablation = np.ones(new_points.shape[0], dtype=bool)
+        if not self.ablation_points.n_points:
+            new_points = np.array(points)
+        else:
+            new_points = np.append(self.ablation_points.points, np.array(points), axis=0)
+
+        self._is_ablation = np.ones(new_points.shape[0], dtype=bool) if new_points is not None else None
         self.ablation_points = LandmarkPoints(
             points=new_points,
             is_landmark=self._is_ablation,
@@ -159,6 +163,7 @@ class Ablation:
 
     def __attrs_post_init__(self):
 
+        self.auto_index = AblationAutoIndex()
         if self.force is None:
             self.force = AblationForce()
 

@@ -77,3 +77,54 @@ class Preprocess:
 
         return np.where(excludes)[0]
 
+    def find_mesh_points_at_distance(self, points_of_interest, distance_threshold=5.0):
+        """
+        Identify mesh points and their corresponding cells that lie within a specified distance from given points.
+
+        This method calculates the distance between a set of input points and the points on the mesh.
+        It then identifies mesh cells and boundary points that are within the specified distance threshold.
+        This can be used to isolate regions of the mesh that are near certain points of interest.
+
+        Args:
+            points_of_interest (ndarray): A numpy array of point coordinates to measure distances from.
+            distance_threshold (float, optional): The maximum distance from the input points to consider
+                for identifying nearby mesh points and cells.
+                All mesh points and cells within this distance will be included. Defaults to 5.0.
+
+        Returns:
+            tuple:
+                nearby_cell_ids (ndarray): An array of indices representing the mesh cells whose centers are within the
+                        distance threshold from the input points.
+                bound_point_ids (ndarray): An array of point indices representing the boundary points of the region
+                        closest to the input points, within the distance threshold.
+        """
+        temp_mesh = self._case.create_mesh()
+
+        # Get the points that are within the distance threshold
+        distances = openep.case.calculate_distance(points_of_interest, temp_mesh.points)
+        nearby_point_ids = np.unique(np.where(distances < distance_threshold)[1])
+
+        # Get the mesh cells whose centers are within the distance threshold
+        mesh_cell_centers = temp_mesh.cell_centers().points
+        cell_distances = openep.case.calculate_distance(points_of_interest, mesh_cell_centers)
+        nearby_cell_ids = np.unique(np.where(cell_distances < distance_threshold)[1])
+
+        # Extract boundaries of the region based on the nearby points
+        region_mesh, _ = temp_mesh.remove_points(~np.isin(np.arange(temp_mesh.n_points), nearby_point_ids), mode='all',
+                                            inplace=False)
+        region_boundaries = openep.mesh.get_free_boundaries(region_mesh)
+
+        if region_boundaries.n_boundaries > 1:
+            # If there are multiple boundaries, select the one closest to the selected points
+            boundaries_lines = region_boundaries.separate_boundaries()
+            boundaries_points = [region_boundaries.points[lines[:, 0]] for lines in boundaries_lines]
+            boundaries_com = [np.mean(boundary_points, axis=0) for boundary_points in boundaries_points]
+            boundary_index = np.argmin(np.linalg.norm(boundaries_com - np.mean(points_of_interest, axis=0), axis=1))
+            bound_point_ids = boundaries_points[boundary_index]
+        else:
+            bound_point_ids = region_boundaries.points
+
+        # Convert boundary points to mesh point ids
+        bound_point_ids = np.argmin(openep.case.calculate_distance(bound_point_ids, temp_mesh.points), axis=1).astype(int)
+
+        return nearby_cell_ids, bound_point_ids
