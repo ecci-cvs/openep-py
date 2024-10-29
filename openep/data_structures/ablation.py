@@ -145,7 +145,7 @@ class AblationAutoIndex:
             max_temp=np.array(self.max_temp) if self.max_temp is not None else None,
             max_power=np.array(self.max_power) if self.max_power is not None else None,
             force_time_integral=np.array(self.force_time_integral) if self.force_time_integral is not None else None,
-            points=np.array(self.points) if self.points is not None else None,
+            points=np.array(self.ablation_points) if self.ablation_points is not None else None,
         )
         return ablation_auto_index
 
