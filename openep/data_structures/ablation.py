@@ -101,27 +101,40 @@ class AblationAutoIndex:
         self.max_temp = max_temp
         self.max_power = max_power
         self.force_time_integral = force_time_integral
-        self._is_ablation = np.ones(points.shape[0], dtype=bool) if points is not None else None
+
+        size = points.shape[0] if points is not None else 0
+        self.is_ablation = np.ones(size, dtype=bool)
+        self.internal_names = np.full(size, "Ablation site 0")
+        self.names = np.full(size, "Auto index")
 
         self.ablation_points = LandmarkPoints(
             points=points,
-            is_landmark=self._is_ablation,
+            is_landmark=self.is_ablation,
+            internal_names=self.internal_names,
+            names=self.names,
         )
 
     def __repr__(self):
         return f"Ablation Auto Index (rfindex) with {len(self.times)} sites."
 
-    def add_ablation_site(self, points):
+    def add_ablation_site(self, points, names: str, internal_names: list):
         """Add new ablation site(s) as Landmark Point"""
-        if not self.ablation_points.n_points:
-            new_points = np.array(points)
-        else:
-            new_points = np.append(self.ablation_points.points, np.array(points), axis=0)
+        new_points = np.array(points)
+        additional_size = points.shape[0]
+        new_internal_names = np.array(internal_names)
+        new_names = np.full(additional_size, names)
 
-        self._is_ablation = np.ones(new_points.shape[0], dtype=bool) if new_points is not None else None
+        if self.ablation_points.n_points:
+            new_points = np.append(self.ablation_points.points, points, axis=0)
+            new_internal_names = np.append(self.ablation_points.internal_names, new_internal_names, axis=0)
+            new_names = np.append(self.ablation_points.names, new_names, axis=0)
+
+        self.is_ablation = np.ones(new_points.shape[0], dtype=bool) if new_points is not None else None
         self.ablation_points = LandmarkPoints(
             points=new_points,
-            is_landmark=self._is_ablation,
+            is_landmark=self.is_ablation,
+            internal_names=new_internal_names,
+            names=new_names
         )
 
     def copy(self):
@@ -132,7 +145,7 @@ class AblationAutoIndex:
             max_temp=np.array(self.max_temp) if self.max_temp is not None else None,
             max_power=np.array(self.max_power) if self.max_power is not None else None,
             force_time_integral=np.array(self.force_time_integral) if self.force_time_integral is not None else None,
-            points=np.array(self.points) if self.points is not None else None,
+            points=np.array(self.ablation_points) if self.ablation_points is not None else None,
         )
         return ablation_auto_index
 
