@@ -94,6 +94,9 @@ def draw_free_boundaries(
         points = free_boundaries.points[boundary[:, 0]]
         points = np.vstack([points, points[:1]])  # we need to close the loop
 
+        if not points.shape[0]:
+            continue
+
         # store the lines to be added in later
         if combine:
             lines = pyvista.lines_from_points(points)
