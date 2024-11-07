@@ -625,7 +625,7 @@ class Electric:
         if self.bipolar_egm._points is None:
 
             self.bipolar_egm = Electrogram(
-                egm=egm,
+                egm=egm.astype(float).reshape(egm.shape[0], 1),
                 points=point,
                 is_electrical=self._is_electrical,
             )
@@ -775,14 +775,18 @@ def extract_electric_data(electric_data):
         )
 
     # We need to know which points are landmark only and have no electrical data.
-    # Those that have NaN values for 
-    is_electrical = ~np.all(np.isnan(electric_data['egm'].astype(float)), axis=1)
+    # Those that have NaN values for
+    try:
+        is_electrical = ~np.all(np.isnan(electric_data['egm'].astype(float)), axis=1)
+    except np.exceptions.AxisError:
+        is_electrical = ~np.all(np.isnan(electric_data['egm'].astype(float).reshape(electric_data['egm'].shape[0], 1)),
+                                axis=1)
 
     # Older versions of OpenEP datasets did not have unipolar data or electrode names. Add deafult ones here.
     if 'electrodeNames_bip' not in electric_data:
         electric_data['electrodeNames_bip'] = np.full_like(internal_names, fill_value="", dtype=str)
     electric_data['electrodeNames_bip'] = _decode_string_arrays(electric_data['electrodeNames_bip'])
-    electric_data['electrodeNames_bip'] =  electric_data['electrodeNames_bip'].astype(str)
+    electric_data['electrodeNames_bip'] = electric_data['electrodeNames_bip'].astype(str)
 
     if 'egmUni' not in electric_data:
         electric_data['egmUni'] =  np.array([])
@@ -902,13 +906,16 @@ def extract_electric_data(electric_data):
     except TypeError as e:
         frequency = 1000.0
 
-    annotations = Annotations(
-        window_of_interest=electric_data['annotations']['woi'].astype(int),
-        local_activation_time=electric_data['annotations']['mapAnnot'].astype(int),
-        reference_activation_time=electric_data['annotations']['referenceAnnot'].astype(int),
-        frequency=frequency,
-        is_electrical=is_electrical,
-    )
+    if electric_data['annotations']['referenceAnnot'].size == 0 and electric_data['annotations']['mapAnnot'].size == 0:
+        annotations = None
+    else:
+        annotations = Annotations(
+            window_of_interest=electric_data['annotations']['woi'].astype(int),
+            local_activation_time=electric_data['annotations']['mapAnnot'].astype(int),
+            reference_activation_time=electric_data['annotations']['referenceAnnot'].astype(int),
+            frequency=frequency,
+            is_electrical=is_electrical,
+        )
 
     electric = Electric(
         names=names,

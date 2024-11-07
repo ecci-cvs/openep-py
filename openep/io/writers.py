@@ -60,6 +60,7 @@ from openep.data_structures.ablation import Ablation
 from openep.data_structures.case import Case
 from openep.data_structures.surface import Fields
 from openep.data_structures.electric import Electric
+from openep.data_structures.vectors import Vectors
 
 __all__ = [
     "export_openCARP",
@@ -247,6 +248,11 @@ def export_openep_mat(
         surface_data=userdata['surface'],
         cv_field=case.fields.conduction_velocity,
         divergence_field=case.fields.cv_divergence
+    )
+
+    userdata['surface'] = _add_vector_data(
+        surface_data=userdata['surface'],
+        vectors=case.vectors
     )
 
     userdata['electric'] = _extract_electric_data(electric=case.electric)
@@ -471,7 +477,6 @@ def _extract_surface_data(
 
     surface_data['thickness'] = fields.thickness if fields.thickness is not None else empty_float_array
     surface_data['cell_region'] = fields.cell_region if fields.cell_region is not None else empty_int_array
-    surface_data['fibres'] = {}
     surface_data['longitudinal'] = fields.longitudinal_fibres if fields.longitudinal_fibres is not None else empty_float_array
     surface_data['transverse'] = fields.transverse_fibres if fields.transverse_fibres is not None else empty_float_array
     surface_data['pacing_site'] = fields.pacing_site if fields.pacing_site is not None else empty_int_array
@@ -585,6 +590,29 @@ def _export_ablation_data(ablation: Ablation):
     ablation_data['originaldata']['force']['position'] = ablation.force.points if ablation.force.points is not None else empty_float_array
 
     return ablation_data
+
+
+def _add_vector_data(
+        surface_data,
+        vectors: Vectors,
+):
+    """Add vector data: fibres, linear connections, linear_connections_regions"""
+    if vectors is None:
+        return surface_data
+
+    if not surface_data.get('signalMaps'):
+        surface_data['signalMaps'] = {}
+
+    if vectors.fibres is not None:
+        surface_data['signalMaps']['fibres'] = vectors.fibres
+
+    if vectors.linear_connections is not None:
+        surface_data['signalMaps']['linear_connections'] = vectors.linear_connections
+
+    if vectors.linear_connection_regions is not None:
+        surface_data['signalMaps']['linear_connection_regions'] = vectors.linear_connection_regions
+
+    return surface_data
 
 
 def _convert_cell_to_point(cell_data, mesh):

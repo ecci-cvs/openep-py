@@ -60,3 +60,36 @@ class Vectors:
             arrows[arrow] = np.array(self[arrow])
 
         return arrows
+
+
+def extract_vector_data(surface_data, indices):
+    """Extract vector data from surface data dictionary.
+
+    Args:
+        surface_data (dict): Dictionary containing numpy arrays that describe the
+            surface of a mesh as well as scalar values (fields)
+        indices (ndarray): Indices of points that make up each face of the mesh
+
+    Returns:
+        vectors (Vectors): Class for storing information about arrows/vectors and lines on surface
+    """
+    vectors = Vectors()
+
+    if not surface_data.get('signalMaps'):
+        return vectors
+
+    signal_props = surface_data.get('signalMaps')
+
+    if signal_props.get('linear_connections') is not None:
+        vectors.linear_connections = signal_props.get('linear_connections')
+
+    if signal_props.get('linear_connection_regions') is not None:
+        vectors.linear_connection_regions = signal_props.get('linear_connection_regions')
+
+    # add fibres
+    n_triangles = indices.shape[0]
+    n_fibres = n_triangles + len(vectors.linear_connection_regions)
+    default_fibres_data = np.tile([1, 0, 0], (n_fibres - 1, 1))
+    vectors.fibres = signal_props.get('fibres') if signal_props.get('fibres') is not None else default_fibres_data
+
+    return vectors
