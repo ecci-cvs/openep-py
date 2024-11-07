@@ -125,13 +125,6 @@ def load_openep_mat(filename, name=None):
     else:
         notes = np.asarray([""], dtype=str)[:, np.newaxis]
 
-    # Fibres data - creates dummy fibres (.lon) data
-    # TODO: Load fibre data from openep.mat
-    fibres_data = np.tile([1, 0, 0], (len(indices), 1))
-    vectors = Vectors(
-        fibres=fibres_data,
-    )
-
     return Case(name, points, indices, fields, electric, ablation=ablation, notes=notes, vectors=vectors)
 
 
