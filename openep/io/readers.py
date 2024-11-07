@@ -64,7 +64,7 @@ from .matlab import _load_mat_v73, _load_mat_below_v73
 from ..data_structures.surface import extract_surface_data, Fields
 from ..data_structures.electric import extract_electric_data, Electric
 from ..data_structures.ablation import extract_ablation_data, Ablation
-from ..data_structures.vectors import Vectors
+from ..data_structures.vectors import extract_vector_data, Vectors
 from ..data_structures.case import Case
 
 __all__ = ["load_openep_mat", "_load_mat", "load_opencarp", "load_circle_cvi", "load_vtk", "load_igb"]
@@ -118,6 +118,7 @@ def load_openep_mat(filename, name=None):
     points, indices, fields = extract_surface_data(data['surface'])
     electric = extract_electric_data(data['electric'])
     ablation = extract_ablation_data(data.get('rf'), data.get('rfindex'))
+    vectors = extract_vector_data(data['surface'], indices)
 
     if 'notes' in data:
         notes = np.asarray([data['notes']])[:, np.newaxis] if isinstance(data['notes'], str) else np.asarray(data['notes']).reshape(-1, 1)
@@ -179,7 +180,7 @@ def load_opencarp(
             parts = elem.strip().split()
             if parts[0] == 'Tr':
                 indices_data.append(list(map(int, parts[1:4])))
-                cell_region_data.append(int(parts[4]))
+                cell_region_data.append(int(float(parts[4])))
             elif parts[0] == 'Ln':
                 linear_connection_data.append(list(map(int, parts[1:3])))
                 linear_connection_regions.append(int(parts[3]))
