@@ -74,6 +74,7 @@ def extract_vector_data(surface_data, indices):
         vectors (Vectors): Class for storing information about arrows/vectors and lines on surface
     """
     vectors = Vectors()
+    n_fibres = indices.shape[0]
 
     if not surface_data.get('signalMaps'):
         return vectors
@@ -85,10 +86,9 @@ def extract_vector_data(surface_data, indices):
 
     if signal_props.get('linear_connection_regions') is not None:
         vectors.linear_connection_regions = signal_props.get('linear_connection_regions')
+        n_fibres += len(vectors.linear_connection_regions)
 
     # add fibres
-    n_triangles = indices.shape[0]
-    n_fibres = n_triangles + len(vectors.linear_connection_regions)
     default_fibres_data = np.tile([1, 0, 0], (n_fibres - 1, 1))
     vectors.fibres = signal_props.get('fibres') if signal_props.get('fibres') is not None else default_fibres_data
 
