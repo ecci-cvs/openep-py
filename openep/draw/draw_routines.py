@@ -86,7 +86,7 @@ def draw_free_boundaries(
     plotter = pyvista.Plotter() if plotter is None else plotter
     colours = [colour] * free_boundaries.n_boundaries if isinstance(colour, str) else colour
 
-    if names is None:
+    if not names:
         names = [f"free_boundary_{boundary_index:d}" for boundary_index in range(free_boundaries.n_boundaries)]
 
     for boundary_index, boundary in enumerate(free_boundaries.separate_boundaries()):
@@ -120,7 +120,12 @@ def draw_free_boundaries(
         actor.prop.edge_color = colour
         actor.prop.color = colour
         actor.prop.lighting = False
-        plotter.add_actor(actor, reset_camera=False, name=names[0], pickable=False)
+        plotter.add_actor(
+            actor,
+            reset_camera=False,
+            name=names[0] if names else None,
+            pickable=False
+        )
 
     return plotter
 
