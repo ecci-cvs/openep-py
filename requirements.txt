@@ -10,7 +10,7 @@ pydicom
 pandas
 scikit-learn
 matplotlib>3.5
-pyvista>=0.33
+pyvista==0.43.1
 pymeshfix
 trimesh
 shapely
