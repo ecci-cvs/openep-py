@@ -69,7 +69,8 @@ class Preprocess:
 
         # Remove points IN the mesh from exclude
         if not from_wall:
-            temp_mesh = repair_mesh(temp_mesh)
+            smoothed_mesh = temp_mesh.smooth(n_iter=10, relaxation_factor=0.1, feature_angle=45.0)
+            temp_mesh = repair_mesh(smoothed_mesh, verbose=True, joincomp=True)
             mapping_points = pv.PolyData(self._case.electric.bipolar_egm.points)
             inside_points = mapping_points.select_enclosed_points(temp_mesh)
             inside_indices = inside_points['SelectedPoints'].view(bool)
