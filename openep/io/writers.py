@@ -147,12 +147,14 @@ def export_openCARP(
 
     # Save fibres
     if case.vectors.fibres is not None:
-        np.savetxt(
-            output_path.with_suffix('.lon'),
-            case.vectors.fibres,
-            fmt="%.6f",
-            comments='',
-        )
+        with open(output_path.with_suffix('.lon'), 'w') as f:
+            f.write("1\n")
+            np.savetxt(
+                f,
+                case.vectors.fibres,
+                fmt="%.6f",
+                comments='',
+            )
 
     # Saving pacing sites if they exist
     if case.fields.pacing_site is None or not export_pacing_site:

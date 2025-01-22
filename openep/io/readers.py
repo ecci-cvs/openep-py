@@ -193,12 +193,18 @@ def load_opencarp(
     if fibres is None:
         fibres_data = np.tile([1, 0, 0], (len(data)-1, 1))
     else:
-        fibres_data = np.loadtxt(fibres)
+        with open(fibres, 'r') as f:
+            first_value = f.readline().strip().split()[0]
+
+        if first_value == "1":
+            fibres_data = np.loadtxt(fibres, skiprows=1)
+        else:
+            fibres_data = np.loadtxt(fibres)
 
     arrows = Vectors(
         fibres=fibres_data,
-        linear_connections=linear_connection_data,
-        linear_connection_regions=linear_connection_regions
+        linear_connections=linear_connection_data if len(linear_connection_data) > 0 else None,
+        linear_connection_regions=linear_connection_data if len(linear_connection_data) > 0 else None,
     )
 
     electric = Electric()
