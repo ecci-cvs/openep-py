@@ -55,6 +55,10 @@ class Fields:
     conduction_velocity: np.ndarray = None
     cv_divergence: np.ndarray = None
     histogram: np.ndarray = None
+    CUSTOM_FIELD_NAME = list()
+
+    def __attrs_post_init__(self):
+        self.CUSTOM_FIELD_NAME.clear()
 
     def __repr__(self):
         return f"fields: {tuple(self.__dict__.keys())}"
@@ -66,8 +70,9 @@ class Fields:
             raise ValueError(f"There is no field '{field}'.") from e
 
     def __setitem__(self, field, value):
-        if field not in self.__dict__.keys():
-            raise ValueError(f"'{field}' is not a valid field name.")
+        if field not in type(self).__annotations__ and field not in self.CUSTOM_FIELD_NAME:
+            self.CUSTOM_FIELD_NAME.append(field)
+
         self.__dict__[field] = value
 
     def __iter__(self):
@@ -78,7 +83,6 @@ class Fields:
 
     def copy(self):
         """Create a deep copy of Fields"""
-
         fields = Fields()
         for field in self:
             if self[field] is None:
@@ -106,6 +110,10 @@ class Fields:
             fields[cell_data] = np.asarray(mesh.cell_data[cell_data])
 
         return fields
+
+    @property
+    def custom(self):
+        return {key: self.__dict__[key] for key in self.CUSTOM_FIELD_NAME if key in self.__dict__}
 
 
 def extract_surface_data(surface_data):
