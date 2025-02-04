@@ -204,7 +204,7 @@ def load_opencarp(
     arrows = Vectors(
         fibres=fibres_data,
         linear_connections=linear_connection_data if len(linear_connection_data) > 0 else None,
-        linear_connection_regions=linear_connection_data if len(linear_connection_data) > 0 else None,
+        linear_connection_regions=linear_connection_regions if len(linear_connection_regions) > 0 else None,
     )
 
     electric = Electric()
