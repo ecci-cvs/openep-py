@@ -246,10 +246,9 @@ def export_openep_mat(
         indices=case.indices,
         fields=case.fields,
     )
-    userdata['surface'] = _add_surface_maps(
+    userdata['surface'] = _add_custom_surface_maps(
         surface_data=userdata['surface'],
-        cv_field=case.fields.conduction_velocity,
-        divergence_field=case.fields.cv_divergence
+        fields=case.fields,
     )
 
     userdata['surface'] = _add_vector_data(
@@ -278,28 +277,25 @@ def export_openep_mat(
     )
 
 
-def _add_surface_maps(surface_data, **kwargs):
-    cv_field = kwargs.get('cv_field')
-    div_field = kwargs.get('divergence_field')
+def _add_custom_surface_maps(surface_data, fields):
+    """Dynamically write all custom fields to openep file"""
+    subset_fields = fields.custom.copy()
+    subset_fields['conduction_velocity'] = fields.conduction_velocity
+    subset_fields['cv_divergence'] = fields.cv_divergence
 
     if not surface_data.get('signalMaps'):
         surface_data['signalMaps'] = {}
 
     # TODO: connect propSetting from user setting in UI
-    if cv_field is not None:
-        surface_data['signalMaps']['conduction_velocity_field'] = {
-            'name': 'Conduction Velocity Field',
-            'value': cv_field,
-            'propSettings': {},
-        }
-
-    if div_field is not None:
-        surface_data['signalMaps']['divergence_field'] = {
-            'name': 'Divergence Field',
-            'value': div_field,
-            'propSettings': {},
-        }
-
+    for name, field in subset_fields.items():
+        if field is not None:
+            surface_data['signalMaps'][name] = {
+                'name': name,
+                'value': field,
+                'propSettings': {
+                    'type': 'field'
+                },
+            }
     return surface_data
 
 
@@ -606,13 +602,27 @@ def _add_vector_data(
         surface_data['signalMaps'] = {}
 
     if vectors.fibres is not None:
-        surface_data['signalMaps']['fibres'] = vectors.fibres
+        surface_data['signalMaps']['fibres'] = {
+            'name': 'fibres',
+            'value': vectors.fibres,
+            'propSettings': {
+                'type': 'vectors'
+            },
+        }
 
     if vectors.linear_connections is not None:
-        surface_data['signalMaps']['linear_connections'] = vectors.linear_connections
+        surface_data['signalMaps']['linear_connections'] = {
+            'name': 'linear_connections',
+            'value': vectors.linear_connections,
+            'propSettings': {},
+        }
 
     if vectors.linear_connection_regions is not None:
-        surface_data['signalMaps']['linear_connection_regions'] = vectors.linear_connection_regions
+        surface_data['signalMaps']['linear_connection_regions'] = {
+            'name': 'linear_connection_regions',
+            'value': vectors.linear_connection_regions,
+            'propSettings': {},
+        }
 
     return surface_data
 
