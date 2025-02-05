@@ -76,20 +76,38 @@ def extract_vector_data(surface_data, indices):
     vectors = Vectors()
     n_fibres = indices.shape[0]
 
+    # add fibres
+    default_fibres_data = np.tile([1, 0, 0], (n_fibres - 1, 1))
+
     if not surface_data.get('signalMaps'):
+        vectors.fibres = default_fibres_data
         return vectors
 
     signal_props = surface_data.get('signalMaps')
 
-    if signal_props.get('linear_connections') is not None:
-        vectors.linear_connections = signal_props.get('linear_connections')
+    lin_conns = signal_props.get('linear_connections')
+    if lin_conns is not None:
+        if isinstance(lin_conns, dict):
+            vectors.linear_connections = lin_conns.get('value')
+        else:
+            vectors.linear_connections = lin_conns
 
-    if signal_props.get('linear_connection_regions') is not None:
-        vectors.linear_connection_regions = signal_props.get('linear_connection_regions')
+    lin_conns_region = signal_props.get('linear_connection_regions')
+    if lin_conns_region is not None:
+        if isinstance(lin_conns_region, dict):
+            vectors.linear_connection_regions = lin_conns_region.get('value')
+        else:
+            vectors.linear_connection_regions = lin_conns_region
+
         n_fibres += len(vectors.linear_connection_regions)
 
-    # add fibres
-    default_fibres_data = np.tile([1, 0, 0], (n_fibres - 1, 1))
-    vectors.fibres = signal_props.get('fibres') if signal_props.get('fibres') is not None else default_fibres_data
+    fibres = signal_props.get('fibres')
+    if fibres is not None:
+        if isinstance(fibres, dict):
+            vectors.fibres = fibres.get('value')
+        else:
+            vectors.linear_connection_regions = lin_conns_region
+    else:
+        vectors.fibres = default_fibres_data
 
     return vectors
