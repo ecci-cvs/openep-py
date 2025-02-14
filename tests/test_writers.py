@@ -38,6 +38,10 @@ def exported_case(case, tmp_path):
 
     return openep.load_openep_mat(EXPORTED_CASE)
 
+@pytest.fixture
+def output_filename(tmp_path):
+    return tmp_path / "_export_case.mat"
+
 
 def test_openep_mat_export(case, exported_case):
     """Check the scalar fields of the original and exported data set are equal."""
@@ -97,3 +101,53 @@ def test_openep_mat_export(case, exported_case):
     assert_allclose(case.ablation.force.force, exported_case.ablation.force.force)
     assert_allclose(case.ablation.force.axial_angle, exported_case.ablation.force.axial_angle)
     assert_allclose(case.ablation.force.lateral_angle, exported_case.ablation.force.lateral_angle)
+
+
+def test_additional_fields_export(case, output_filename):
+    """Check if additional fields are exported then imported correctly"""
+
+    mesh = case.create_mesh()
+
+    case.fields['hello'] = case.fields.bipolar_voltage
+    case.fields['world'] = case.fields.unipolar_voltage
+    case.fields['empty'] = np.full(mesh.n_points, fill_value=np.NaN)
+    case.fields['none'] = None
+
+    openep.export_openep_mat(case,  output_filename)
+    ts_case = openep.load_openep_mat(output_filename)
+
+    np.testing.assert_array_equal(ts_case.fields.hello, case.fields.hello)
+    np.testing.assert_array_equal(ts_case.fields.world, case.fields.world)
+    np.testing.assert_array_equal(ts_case.fields.empty, case.fields.empty)
+
+    assert 'none' not in ts_case.fields
+    assert 'none' not in ts_case.fields.CUSTOM_FIELD_NAME
+
+def test_opencarp_mat_export(case, tmp_path):
+    path_prefix = tmp_path / "exported_case"
+
+    openep.export_openCARP(
+        case=case,
+        prefix=path_prefix,
+        scale_points=1000,  # convert mm to micrometre
+        export_transverse_fibres=False,  # TODO: this should be a user-preference
+    )
+
+    carp_case = openep.load_opencarp(
+        points=f"{path_prefix}.pts",
+        indices=f"{path_prefix}.elem",
+        fibres=f"{path_prefix}.lon",
+        scale_points=1e-3,
+    )
+
+    openep_mesh = case.create_mesh()
+    opencarp_mesh = carp_case.create_mesh()
+
+    assert openep_mesh.n_points == opencarp_mesh.n_points
+    assert openep_mesh.n_faces == opencarp_mesh.n_faces
+    assert np.allclose(openep_mesh.points, opencarp_mesh.points)
+    assert np.array_equal(openep_mesh.faces, opencarp_mesh.faces)
+
+    assert np.array_equal(case.vectors.fibres, carp_case.vectors.fibres)
+    assert np.array_equal(case.vectors.linear_connections, carp_case.vectors.linear_connections)
+    assert np.array_equal(case.vectors.linear_connection_regions, carp_case.vectors.linear_connection_regions)

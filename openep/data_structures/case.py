@@ -322,6 +322,7 @@ class Case:
             fields=self.fields.copy(),
             electric=self.electric.copy(),
             ablation=self.ablation.copy(),
+            vectors=self.vectors.copy(),
             notes=np.array(self.notes) if self.notes is not None else None,        
         )
 
