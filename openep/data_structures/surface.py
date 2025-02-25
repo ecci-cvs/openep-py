@@ -243,15 +243,15 @@ def empty_fields(n_points=0, n_cells=0):
             scalar fields
     """
 
-    local_activation_time = np.full(n_points, fill_value=np.NaN, dtype=float)
-    bipolar_voltage = np.full(n_points, fill_value=np.NaN, dtype=float)
-    unipolar_voltage = np.full(n_points, fill_value=np.NaN, dtype=float)
-    impedance = np.full(n_points, fill_value=np.NaN, dtype=float)
-    force = np.full(n_points, fill_value=np.NaN, dtype=float)
-    thickness = np.full(n_points, fill_value=np.NaN, dtype=float)
+    local_activation_time = np.full(n_points, fill_value=np.nan, dtype=float)
+    bipolar_voltage = np.full(n_points, fill_value=np.nan, dtype=float)
+    unipolar_voltage = np.full(n_points, fill_value=np.nan, dtype=float)
+    impedance = np.full(n_points, fill_value=np.nan, dtype=float)
+    force = np.full(n_points, fill_value=np.nan, dtype=float)
+    thickness = np.full(n_points, fill_value=np.nan, dtype=float)
     cell_region = np.full(n_cells, fill_value=0, dtype=int)
-    longitudinal_fibres = np.full((n_cells, 3), fill_value=np.NaN)
-    transverse_fibres = np.full((n_cells, 3), fill_value=np.NaN)
+    longitudinal_fibres = np.full((n_cells, 3), fill_value=np.nan)
+    transverse_fibres = np.full((n_cells, 3), fill_value=np.nan)
     pacing_site = np.full(n_points, fill_value=-1, dtype=int)
 
     fields = Fields(

@@ -110,7 +110,7 @@ def test_additional_fields_export(case, output_filename):
 
     case.fields['hello'] = case.fields.bipolar_voltage
     case.fields['world'] = case.fields.unipolar_voltage
-    case.fields['empty'] = np.full(mesh.n_points, fill_value=np.NaN)
+    case.fields['empty'] = np.full(mesh.n_points, fill_value=np.nan)
     case.fields['none'] = None
 
     openep.export_openep_mat(case,  output_filename)
