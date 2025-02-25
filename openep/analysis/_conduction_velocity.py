@@ -22,6 +22,7 @@ import math
 from vedo import *
 import pyvista as pv
 from scipy.optimize import minimize
+from scipy.interpolate import Rbf
 from sklearn.neighbors import KDTree
 
 from ..case.case_routines import interpolate_general_cloud_points_onto_surface
@@ -73,6 +74,7 @@ def preprocess_lat_egm(
 def plane_fitting(
         bipolar_egm_pts,
         local_activation_time,
+        case,
         leaf_size=5,
         min_n_nearest_neighbours=5,
         tree_query_radius=10
@@ -151,6 +153,7 @@ def plane_fitting(
 def triangulation(
     bipolar_egm_pts,
     local_activation_time,
+    case,
     min_theta=30,
     electrode_distance_range=(1.5, 10),
     min_lat_difference=2,
@@ -279,11 +282,80 @@ def _obj_func(coef, x1, x2, x3, m):
 
 
 def radial_basis_function(
-    bipolar_egm_pts,
-    local_activation_time
+        bipolar_egm_pts,
+        local_activation_time,
+        case,
+        leaf_size=5,
+        project_on_surface=True,
+        epsilon=None,
+        kernel='gaussian',
+        smooth=1,
 ):
-    raise NotImplementedError("Method: radial_basis_function has not been implemented yet for estimating CV!")
+    """
+        Calculate conduction velocities on a cardiac mesh using RBF interpolation.
 
+    Args:
+        bipolar_egm_pts (array):
+            Array of bipolar electrogram points of size Nx3 representing the 3D coordinates.
+
+        local_activation_time (array):
+            Array of local activation times corresponding to the bipolar electrogram points.
+
+        mesh (Mesh):
+            Mesh object containing point coordinates and methods (e.g., for computing derivatives).
+
+        project_on_surface (bool, optional):
+            If True, projects the bipolar electrogram points onto the mesh surface before interpolation.
+            Defaults to True.
+
+        kernel (str, optional):
+            Kernel type used in the RBF interpolation (e.g., 'gaussian').
+            Defaults to 'gaussian'.
+
+        epsilon (float, optional):
+            Shape parameter for the RBF interpolation. Defaults to None.
+
+        smooth (float, optional):
+            Smoothing parameter for the RBF interpolation. Defaults to 1.
+
+        leaf_size (int, optional):
+            Leaf size parameter for the KDTree used in nearest neighbor queries.
+            Defaults to 5.
+    """
+    mesh = case.create_mesh()
+
+    if project_on_surface:
+        tree = KDTree(mesh.points, leaf_size=2)
+        dist, ind = tree.query(bipolar_egm_pts, k=1)
+        points_of_interest = mesh.points[ind.flat]
+    else:
+        points_of_interest = bipolar_egm_pts
+
+    rbf_interpolator = Rbf(
+        points_of_interest[:, 0],
+        points_of_interest[:, 1],
+        points_of_interest[:, 2],
+        local_activation_time,
+        kernel=kernel,
+        epsilon=epsilon,
+        smooth=smooth
+    )
+
+    lat_interpolated = rbf_interpolator(mesh.points[:, 0], mesh.points[:, 1], mesh.points[:, 2])
+
+    mesh['values'] = lat_interpolated
+    deriv = mesh.compute_derivative('values')
+    gradients = deriv['gradient']
+
+    grad_norm_sq = gradients[:, 0] ** 2 + gradients[:, 1] ** 2 + gradients[:, 2] ** 2
+    cv = 1 / np.sqrt(grad_norm_sq)
+
+    tree = KDTree(mesh.points, leaf_size=leaf_size)
+    _, indices = tree.query(bipolar_egm_pts, k=1)
+    cv_centroids = mesh.points[indices.flatten()]
+    cv_values = cv[indices.flatten()]
+
+    return cv_values, cv_centroids
 
 def divergence(
         case,

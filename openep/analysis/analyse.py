@@ -131,7 +131,7 @@ class ConductionVelocity:
                - self._case.electric.annotations.reference_activation_time[include])
 
         cv_method = supported_cv_methods[method]
-        self.values, self.centers = cv_method(bipolar_egm_pts, lat, **method_kwargs)
+        self.values, self.centers = cv_method(bipolar_egm_pts, lat, self._case, **method_kwargs)
 
         if apply_scalar_field:
             self._case.fields.conduction_velocity = interpolate_general_cloud_points_onto_surface(
