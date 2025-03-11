@@ -77,7 +77,7 @@ def extract_vector_data(surface_data, indices):
     n_fibres = indices.shape[0]
 
     # add fibres
-    default_fibres_data = np.tile([1, 0, 0], (n_fibres - 1, 1))
+    default_fibres_data = np.tile([1, 0, 0], (n_fibres, 1))
 
     if not surface_data.get('signalMaps'):
         vectors.fibres = default_fibres_data
