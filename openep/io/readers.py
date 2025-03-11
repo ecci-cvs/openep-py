@@ -233,7 +233,7 @@ def load_vtk(filename, name=None):
     mesh = pyvista.read(filename)
 
     # fibres data
-    fibres_data = np.tile([1, 0, 0], (mesh.n_points-1, 1))
+    fibres_data = np.tile([1, 0, 0], (mesh.n_cells-1, 1))
     vectors = Vectors(
         fibres=fibres_data,
     )
