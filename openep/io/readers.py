@@ -357,6 +357,8 @@ def load_igb(igb_filepath):
 
         file.seek(1024)
         data = np.fromfile(file, dtype=np.float32, count=size * nnode)
-        data = data.reshape((size, nnode)).transpose()
+
+        num_complete_rows = data.size // nnode
+        data = data[:num_complete_rows * nnode].reshape((num_complete_rows, nnode)).transpose()
 
     return data, hdr_content
