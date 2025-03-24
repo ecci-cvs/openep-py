@@ -131,7 +131,7 @@ class ConductionVelocity:
                - self._case.electric.annotations.reference_activation_time[include])
 
         cv_method = supported_cv_methods[method]
-        self.values, self.centers = cv_method(bipolar_egm_pts, lat, **method_kwargs)
+        self.values, self.centers = cv_method(bipolar_egm_pts, lat, self._case, **method_kwargs)
 
         if apply_scalar_field:
             self._case.fields.conduction_velocity = interpolate_general_cloud_points_onto_surface(
@@ -225,3 +225,43 @@ class Divergence:
             self._case.fields.cv_divergence = self.values
 
         return self.direction, self.values
+
+    def exclude_collision_points(
+            self,
+            cv_field,
+            divergence_field,
+            collision_threshold=-3,
+            focal_threshold=3,
+            radius=4,
+    ):
+        """
+        Exclude conduction velocity values near regions of wave collision or focal discharge.
+
+        Args
+            cv_field : np.ndarray
+                Array of conduction velocity values corresponding to each mesh point.
+            divergence_field : np.ndarray
+                Array of divergence values at each mesh point.
+            collision_threshold : float, optional
+                Threshold for detecting wave collisions (default is -3).
+            focal_threshold : float, optional
+                Threshold for detecting focal discharges (default is 3).
+            radius : float, optional
+                Neighborhood radius within which to check for collision conditions (default is 4).
+
+        Returns
+            np.ndarray
+                Array of conduction velocity values, with values replaced by np.nan where a collision is detected.
+        """
+        temp_mesh = self._case.create_mesh()
+
+        cv_field = exclude_collision_points(
+            mesh=temp_mesh,
+            cv_field=cv_field,
+            divergence_field=divergence_field,
+            collision_threshold=collision_threshold,
+            focal_threshold=focal_threshold,
+            radius=radius,
+        )
+
+        return cv_field
