@@ -60,6 +60,7 @@ from openep.data_structures.ablation import Ablation
 from openep.data_structures.case import Case
 from openep.data_structures.surface import Fields
 from openep.data_structures.electric import Electric
+from openep.data_structures.vectors import Vectors
 
 __all__ = [
     "export_openCARP",
@@ -146,12 +147,14 @@ def export_openCARP(
 
     # Save fibres
     if case.vectors.fibres is not None:
-        np.savetxt(
-            output_path.with_suffix('.lon'),
-            case.vectors.fibres,
-            fmt="%.6f",
-            comments='',
-        )
+        with open(output_path.with_suffix('.lon'), 'w') as f:
+            f.write("1\n")
+            np.savetxt(
+                f,
+                case.vectors.fibres,
+                fmt="%.6f",
+                comments='',
+            )
 
     # Saving pacing sites if they exist
     if case.fields.pacing_site is None or not export_pacing_site:
@@ -243,10 +246,14 @@ def export_openep_mat(
         indices=case.indices,
         fields=case.fields,
     )
-    userdata['surface'] = _add_surface_maps(
+    userdata['surface'] = _add_custom_surface_maps(
         surface_data=userdata['surface'],
-        cv_field=case.fields.conduction_velocity,
-        divergence_field=case.fields.cv_divergence
+        fields=case.fields,
+    )
+
+    userdata['surface'] = _add_vector_data(
+        surface_data=userdata['surface'],
+        vectors=case.vectors
     )
 
     userdata['electric'] = _extract_electric_data(electric=case.electric)
@@ -270,28 +277,25 @@ def export_openep_mat(
     )
 
 
-def _add_surface_maps(surface_data, **kwargs):
-    cv_field = kwargs.get('cv_field')
-    div_field = kwargs.get('divergence_field')
+def _add_custom_surface_maps(surface_data, fields):
+    """Dynamically write all custom fields to openep file"""
+    subset_fields = fields.custom.copy()
+    subset_fields['conduction_velocity'] = fields.conduction_velocity
+    subset_fields['cv_divergence'] = fields.cv_divergence
 
     if not surface_data.get('signalMaps'):
         surface_data['signalMaps'] = {}
 
     # TODO: connect propSetting from user setting in UI
-    if cv_field is not None:
-        surface_data['signalMaps']['conduction_velocity_field'] = {
-            'name': 'Conduction Velocity Field',
-            'value': cv_field,
-            'propSettings': {},
-        }
-
-    if div_field is not None:
-        surface_data['signalMaps']['divergence_field'] = {
-            'name': 'Divergence Field',
-            'value': div_field,
-            'propSettings': {},
-        }
-
+    for name, field in subset_fields.items():
+        if field is not None:
+            surface_data['signalMaps'][name] = {
+                'name': name,
+                'value': field,
+                'propSettings': {
+                    'type': 'field'
+                },
+            }
     return surface_data
 
 
@@ -436,9 +440,9 @@ def _extract_surface_data(
     if fields.local_activation_time is None and fields.bipolar_voltage is None:
         surface_data['act_bip'] = empty_float_array
     elif fields.local_activation_time is None:
-        fields.local_activation_time = np.full_like(fields.bipolar_voltage, fill_value=np.NaN)
+        fields.local_activation_time = np.full_like(fields.bipolar_voltage, fill_value=np.nan)
     elif fields.bipolar_voltage is None:
-        fields.bipolar_voltage = np.full_like(fields.local_activation_time, fill_value=np.NaN)
+        fields.bipolar_voltage = np.full_like(fields.local_activation_time, fill_value=np.nan)
 
     if 'act_bip' not in surface_data:
         surface_data['act_bip'] = np.concatenate(
@@ -453,11 +457,11 @@ def _extract_surface_data(
         surface_data['uni_imp_frc'] = empty_float_array
     else:
         if fields.unipolar_voltage is None:
-            fields.unipolar_voltage = np.full(points.size // 3, fill_value=np.NaN)
+            fields.unipolar_voltage = np.full(points.size // 3, fill_value=np.nan)
         if fields.impedance is None:
-            fields.impedance = np.full(points.size // 3, fill_value=np.NaN)
+            fields.impedance = np.full(points.size // 3, fill_value=np.nan)
         if fields.force is None:
-            fields.force = np.full(points.size // 3, fill_value=np.NaN)
+            fields.force = np.full(points.size // 3, fill_value=np.nan)
 
     if 'uni_imp_frc' not in surface_data:
         surface_data['uni_imp_frc'] = np.concatenate(
@@ -471,7 +475,6 @@ def _extract_surface_data(
 
     surface_data['thickness'] = fields.thickness if fields.thickness is not None else empty_float_array
     surface_data['cell_region'] = fields.cell_region if fields.cell_region is not None else empty_int_array
-    surface_data['fibres'] = {}
     surface_data['longitudinal'] = fields.longitudinal_fibres if fields.longitudinal_fibres is not None else empty_float_array
     surface_data['transverse'] = fields.transverse_fibres if fields.transverse_fibres is not None else empty_float_array
     surface_data['pacing_site'] = fields.pacing_site if fields.pacing_site is not None else empty_int_array
@@ -585,6 +588,43 @@ def _export_ablation_data(ablation: Ablation):
     ablation_data['originaldata']['force']['position'] = ablation.force.points if ablation.force.points is not None else empty_float_array
 
     return ablation_data
+
+
+def _add_vector_data(
+        surface_data,
+        vectors: Vectors,
+):
+    """Add vector data: fibres, linear connections, linear_connections_regions"""
+    if vectors is None:
+        return surface_data
+
+    if not surface_data.get('signalMaps'):
+        surface_data['signalMaps'] = {}
+
+    if vectors.fibres is not None:
+        surface_data['signalMaps']['fibres'] = {
+            'name': 'fibres',
+            'value': vectors.fibres,
+            'propSettings': {
+                'type': 'vectors'
+            },
+        }
+
+    if vectors.linear_connections is not None:
+        surface_data['signalMaps']['linear_connections'] = {
+            'name': 'linear_connections',
+            'value': vectors.linear_connections,
+            'propSettings': {},
+        }
+
+    if vectors.linear_connection_regions is not None:
+        surface_data['signalMaps']['linear_connection_regions'] = {
+            'name': 'linear_connection_regions',
+            'value': vectors.linear_connection_regions,
+            'propSettings': {},
+        }
+
+    return surface_data
 
 
 def _convert_cell_to_point(cell_data, mesh):
