@@ -233,7 +233,7 @@ def load_vtk(filename, name=None):
     mesh = pyvista.read(filename)
 
     # fibres data
-    fibres_data = np.tile([1, 0, 0], (mesh.n_points-1, 1))
+    fibres_data = np.tile([1, 0, 0], (mesh.n_cells-1, 1))
     vectors = Vectors(
         fibres=fibres_data,
     )
@@ -357,6 +357,8 @@ def load_igb(igb_filepath):
 
         file.seek(1024)
         data = np.fromfile(file, dtype=np.float32, count=size * nnode)
-        data = data.reshape((size, nnode)).transpose()
+
+        num_complete_rows = data.size // nnode
+        data = data[:num_complete_rows * nnode].reshape((num_complete_rows, nnode)).transpose()
 
     return data, hdr_content

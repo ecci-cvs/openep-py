@@ -107,15 +107,12 @@ class AblationAutoIndex:
         self.internal_names = np.full(size, "Ablation site 0")
         self.names = np.full(size, "Auto index")
 
-        if size > 0:
-            self.ablation_points = LandmarkPoints(
-                points=points,
-                is_landmark=self.is_ablation,
-                internal_names=self.internal_names,
-                names=self.names,
-            )
-        else:
-            self.ablation_points = None
+        self.ablation_points = LandmarkPoints(
+            points=points,
+            is_landmark=self.is_ablation,
+            internal_names=self.internal_names,
+            names=self.names,
+        )
 
     def __repr__(self):
         return f"Ablation Auto Index (rfindex) with {len(self.times)} sites."
