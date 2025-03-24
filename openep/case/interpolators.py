@@ -51,7 +51,7 @@ class LocalSMoothingInterpolator:
     points: np.ndarray
     field: np.ndarray
     smoothing_length: int = 5
-    fill_value: float = np.NaN
+    fill_value: float = np.nan
 
     def __call__(self, new_points):
         """Evaluate the interpolant.

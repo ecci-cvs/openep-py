@@ -215,7 +215,7 @@ def get_electrograms_at_points(
     if case.electric.annotations.local_activation_time is not None:
         local_activation_time = case.electric.annotations.local_activation_time
     else:
-        local_activation_time = np.full_like(names, fill_value=np.NaN)
+        local_activation_time = np.full_like(names, fill_value=np.nan)
 
     # Filter by selected indices
     if indices is not None:
@@ -315,7 +315,7 @@ def calculate_voltage_from_electrograms(case, buffer=50, bipolar=True, indices=N
         electrograms = case.electric.unipolar_egm.egm[:, :, 0].copy() if indices is None else case.electric.unipolar_egm.egm[indices, :, 0].copy()
 
     sample_within_woi = get_sample_indices_within_woi(case, buffer=buffer, indices=indices)
-    electrograms[~sample_within_woi] = np.NaN
+    electrograms[~sample_within_woi] = np.nan
 
     amplitudes = np.nanmax(electrograms, axis=1) - np.nanmin(electrograms, axis=1)
 
@@ -447,7 +447,7 @@ class Interpolator:
                 return_distances=False
             )
             within_distance = np.any(within_distance, axis=1)
-            interpolated_field[~within_distance] = np.NaN
+            interpolated_field[~within_distance] = np.nan
 
         return interpolated_field
 
@@ -504,7 +504,7 @@ def interpolate_general_cloud_points_onto_surface(
     # Any points that are not part of the mesh faces should have its value set to NaN
     n_surface_points = surface_points.shape[0]
     not_on_surface = ~np.in1d(np.arange(n_surface_points), case.indices)
-    interpolated[not_on_surface] = np.NaN
+    interpolated[not_on_surface] = np.nan
 
     return interpolated
 
@@ -558,7 +558,7 @@ def interpolate_activation_time_onto_surface(
     # Any points that are not part of the mesh faces should have bipolar voltage set to NaN
     n_surface_points = surface_points.shape[0]
     not_on_surface = ~np.in1d(np.arange(n_surface_points), case.indices)
-    interpolated_lat[not_on_surface] = np.NaN
+    interpolated_lat[not_on_surface] = np.nan
 
     return interpolated_lat
 
@@ -619,7 +619,7 @@ def interpolate_voltage_onto_surface(
     # Any points that are not part of the mesh faces should have bipolar voltage set to NaN
     n_surface_points = surface_points.shape[0]
     not_on_surface = ~np.in1d(np.arange(n_surface_points), case.indices)
-    interpolated_voltages[not_on_surface] = np.NaN
+    interpolated_voltages[not_on_surface] = np.nan
 
     return interpolated_voltages
 
@@ -645,7 +645,7 @@ def bipolar_from_unipolar_surface_points(unipolar, indices):
 
     """
 
-    bipolar = np.full_like(unipolar, fill_value=np.NaN)
+    bipolar = np.full_like(unipolar, fill_value=np.nan)
     pair_indices = np.full((len(unipolar), 2), fill_value=0, dtype=int)
 
     for index, index_unipolar in enumerate(unipolar):

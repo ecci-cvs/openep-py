@@ -185,7 +185,7 @@ def _load_mat_v73(filename):
         data = _visit_mat_v73_(f)
 
     # rfindex is a matlab class - not readable with Python
-    data.pop('userdata/rfindex/tag', None)
+    # data.pop('userdata/rfindex/tag', None)
     data.pop('userdata/rfindex/grid', None)
 
     # Some arrays need to be flattened or transposed
@@ -249,8 +249,5 @@ def _load_mat_below_v73(filename):
         else:
             message = 'MATLAB classes cannot be read. Please use OpenEP MATLAB to save the triRep data as a struct.'
             raise TypeError(message) from e
-
-    # rfindex is a matlab class - not readable with Python
-    data.pop('rfindex', None)
 
     return data

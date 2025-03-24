@@ -64,7 +64,7 @@ from .matlab import _load_mat_v73, _load_mat_below_v73
 from ..data_structures.surface import extract_surface_data, Fields
 from ..data_structures.electric import extract_electric_data, Electric
 from ..data_structures.ablation import extract_ablation_data, Ablation
-from ..data_structures.arrows import Arrows
+from ..data_structures.vectors import extract_vector_data, Vectors
 from ..data_structures.case import Case
 
 __all__ = ["load_openep_mat", "_load_mat", "load_opencarp", "load_circle_cvi", "load_vtk", "load_igb"]
@@ -117,14 +117,15 @@ def load_openep_mat(filename, name=None):
 
     points, indices, fields = extract_surface_data(data['surface'])
     electric = extract_electric_data(data['electric'])
-    ablation = extract_ablation_data(data['rf']) if 'rf' in data else None
+    ablation = extract_ablation_data(data.get('rf'), data.get('rfindex'))
+    vectors = extract_vector_data(data['surface'], indices)
 
     if 'notes' in data:
         notes = np.asarray([data['notes']])[:, np.newaxis] if isinstance(data['notes'], str) else np.asarray(data['notes']).reshape(-1, 1)
     else:
         notes = np.asarray([""], dtype=str)[:, np.newaxis]
 
-    return Case(name, points, indices, fields, electric, ablation, notes)
+    return Case(name, points, indices, fields, electric, ablation=ablation, notes=notes, vectors=vectors)
 
 
 def load_opencarp(
@@ -158,20 +159,21 @@ def load_opencarp(
 
     name = os.path.basename(points) if name is None else name
 
+    # pts data
     points_data = np.loadtxt(points, skiprows=1)
     points_data *= scale_points
-    fibres_data = None if fibres is None else np.loadtxt(fibres)
 
     indices_data, cell_region_data = [], []
     linear_connection_data, linear_connection_regions = [], []
 
+    # elem data
     with open(indices) as elem_file:
         data = elem_file.readlines()
         for elem in data:
             parts = elem.strip().split()
             if parts[0] == 'Tr':
                 indices_data.append(list(map(int, parts[1:4])))
-                cell_region_data.append(int(parts[4]))
+                cell_region_data.append(int(float(parts[4])))
             elif parts[0] == 'Ln':
                 linear_connection_data.append(list(map(int, parts[1:3])))
                 linear_connection_regions.append(int(parts[3]))
@@ -181,17 +183,30 @@ def load_opencarp(
     linear_connection_data = np.array(linear_connection_data)
     linear_connection_regions = np.array(linear_connection_regions)
 
-    arrows = Arrows(
-        fibres=fibres_data,
-        linear_connections=linear_connection_data,
-        linear_connection_regions=linear_connection_regions
-    )
-
     fields = Fields(
         cell_region=cell_region,
         longitudinal_fibres=None,
         transverse_fibres=None,
     )
+
+    # Fibres data
+    if fibres is None:
+        fibres_data = np.tile([1, 0, 0], (len(data)-1, 1))
+    else:
+        with open(fibres, 'r') as f:
+            first_value = f.readline().strip().split()[0]
+
+        if first_value == "1":
+            fibres_data = np.loadtxt(fibres, skiprows=1)
+        else:
+            fibres_data = np.loadtxt(fibres)
+
+    arrows = Vectors(
+        fibres=fibres_data,
+        linear_connections=linear_connection_data if len(linear_connection_data) > 0 else None,
+        linear_connection_regions=linear_connection_regions if len(linear_connection_regions) > 0 else None,
+    )
+
     electric = Electric()
     ablation = Ablation()
     notes = np.asarray([], dtype=object)
@@ -217,6 +232,12 @@ def load_vtk(filename, name=None):
     name = name if name is not None else os.path.basename(filename)
     mesh = pyvista.read(filename)
 
+    # fibres data
+    fibres_data = np.tile([1, 0, 0], (mesh.n_cells-1, 1))
+    vectors = Vectors(
+        fibres=fibres_data,
+    )
+
     case = Case(
         name=name,
         points=mesh.points,
@@ -224,6 +245,7 @@ def load_vtk(filename, name=None):
         fields=Fields.from_pyvista(mesh),
         electric = Electric(),
         ablation = Ablation(),
+        vectors=vectors,
         notes = np.asarray([], dtype=object),
     )
 
@@ -335,6 +357,8 @@ def load_igb(igb_filepath):
 
         file.seek(1024)
         data = np.fromfile(file, dtype=np.float32, count=size * nnode)
-        data = data.reshape((size, nnode)).transpose()
+
+        num_complete_rows = data.size // nnode
+        data = data[:num_complete_rows * nnode].reshape((num_complete_rows, nnode)).transpose()
 
     return data, hdr_content
