@@ -60,3 +60,54 @@ class Vectors:
             arrows[arrow] = np.array(self[arrow])
 
         return arrows
+
+
+def extract_vector_data(surface_data, indices):
+    """Extract vector data from surface data dictionary.
+
+    Args:
+        surface_data (dict): Dictionary containing numpy arrays that describe the
+            surface of a mesh as well as scalar values (fields)
+        indices (ndarray): Indices of points that make up each face of the mesh
+
+    Returns:
+        vectors (Vectors): Class for storing information about arrows/vectors and lines on surface
+    """
+    vectors = Vectors()
+    n_fibres = indices.shape[0]
+
+    # add fibres
+    default_fibres_data = np.tile([1, 0, 0], (n_fibres, 1))
+
+    if not surface_data.get('signalMaps'):
+        vectors.fibres = default_fibres_data
+        return vectors
+
+    signal_props = surface_data.get('signalMaps')
+
+    lin_conns = signal_props.get('linear_connections')
+    if lin_conns is not None:
+        if isinstance(lin_conns, dict):
+            vectors.linear_connections = lin_conns.get('value')
+        else:
+            vectors.linear_connections = lin_conns
+
+    lin_conns_region = signal_props.get('linear_connection_regions')
+    if lin_conns_region is not None:
+        if isinstance(lin_conns_region, dict):
+            vectors.linear_connection_regions = lin_conns_region.get('value')
+        else:
+            vectors.linear_connection_regions = lin_conns_region
+
+        n_fibres += len(vectors.linear_connection_regions)
+
+    fibres = signal_props.get('fibres')
+    if fibres is not None:
+        if isinstance(fibres, dict):
+            vectors.fibres = fibres.get('value')
+        else:
+            vectors.linear_connection_regions = lin_conns_region
+    else:
+        vectors.fibres = default_fibres_data
+
+    return vectors
