@@ -193,12 +193,18 @@ def load_opencarp(
     if fibres is None:
         fibres_data = np.tile([1, 0, 0], (len(data)-1, 1))
     else:
-        fibres_data = np.loadtxt(fibres)
+        with open(fibres, 'r') as f:
+            first_value = f.readline().strip().split()[0]
+
+        if first_value == "1":
+            fibres_data = np.loadtxt(fibres, skiprows=1)
+        else:
+            fibres_data = np.loadtxt(fibres)
 
     arrows = Vectors(
         fibres=fibres_data,
-        linear_connections=linear_connection_data,
-        linear_connection_regions=linear_connection_regions
+        linear_connections=linear_connection_data if len(linear_connection_data) > 0 else None,
+        linear_connection_regions=linear_connection_regions if len(linear_connection_regions) > 0 else None,
     )
 
     electric = Electric()
@@ -227,7 +233,7 @@ def load_vtk(filename, name=None):
     mesh = pyvista.read(filename)
 
     # fibres data
-    fibres_data = np.tile([1, 0, 0], (mesh.n_points-1, 1))
+    fibres_data = np.tile([1, 0, 0], (mesh.n_cells-1, 1))
     vectors = Vectors(
         fibres=fibres_data,
     )
@@ -351,6 +357,8 @@ def load_igb(igb_filepath):
 
         file.seek(1024)
         data = np.fromfile(file, dtype=np.float32, count=size * nnode)
-        data = data.reshape((size, nnode)).transpose()
+
+        num_complete_rows = data.size // nnode
+        data = data[:num_complete_rows * nnode].reshape((num_complete_rows, nnode)).transpose()
 
     return data, hdr_content
