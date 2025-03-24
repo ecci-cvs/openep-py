@@ -517,7 +517,7 @@ def calculate_vertex_distance(
     try:
         distance = mesh.geodesic_distance(start_index, end_index)
     except(ValueError):
-        distance = np.NaN
+        distance = np.nan
 
     return distance
 
@@ -732,7 +732,7 @@ def low_field_area_per_region(
         field = point_data_to_cell_data(mesh, field)
 
     unique_regions = np.unique(cell_region)
-    low_field_areas = np.full(unique_regions.size, fill_value=np.NaN)
+    low_field_areas = np.full(unique_regions.size, fill_value=np.nan)
     for index, region in enumerate(unique_regions):
 
         region_mask = cell_region == region
@@ -765,7 +765,7 @@ def mean_field_per_region(mesh, field, cell_region):
         field = point_data_to_cell_data(mesh, field)
 
     unique_regions = np.unique(cell_region)
-    mean_field_values = np.full(unique_regions.size, fill_value=np.NaN)
+    mean_field_values = np.full(unique_regions.size, fill_value=np.nan)
     for index, region in enumerate(unique_regions):
 
         region_mask = cell_region == region
