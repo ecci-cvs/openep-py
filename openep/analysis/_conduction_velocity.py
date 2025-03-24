@@ -29,7 +29,7 @@ from ..case.case_routines import interpolate_general_cloud_points_onto_surface
 
 
 __all__ = ['preprocess_lat_egm', 'plane_fitting', 'divergence',
-           'triangulation', 'radial_basis_function']
+           'triangulation', 'radial_basis_function', 'exclude_collision_points']
 
 
 def preprocess_lat_egm(
@@ -357,6 +357,7 @@ def radial_basis_function(
 
     return cv_values, cv_centroids
 
+
 def divergence(
         case,
         bipolar_egm_pts,
@@ -428,3 +429,49 @@ def divergence(
         divergence = np.where((divergence < collision_threshold) | (divergence > focal_threshold), 1, 0)
 
     return norm_cv_direction, divergence
+
+
+def exclude_collision_points(
+        mesh,
+        cv_field,
+        divergence_field,
+        collision_threshold=-1,
+        focal_threshold=1,
+        radius=2,
+):
+    """
+    Exclude conduction velocity values near regions of wave collision or focal discharge.
+
+    Args:
+        cv_field : np.ndarray
+            Array of conduction velocity values corresponding to each mesh point.
+        divergence_field : np.ndarray
+            Array of divergence values at each mesh point.
+        collision_threshold : float, optional
+            Threshold for detecting wave collisions (default is -3).
+        focal_threshold : float, optional
+            Threshold for detecting focal discharges (default is 3).
+        radius : float, optional
+            Neighborhood radius within which to check for collision conditions (default is 4).
+
+    Returns:
+
+        np.ndarray
+            Array of conduction velocity values, with values replaced by np.nan where a collision is detected.
+    """
+    cv_i_excluded = []
+    tree = KDTree(mesh.points, leaf_size=2)
+    neighbors_indices = tree.query_radius(mesh.points, r=radius)
+
+    for i, neighbors in enumerate(neighbors_indices):
+        # Check if any neighbor meets the collision criteria
+        collision_found = any(
+            divergence_field[j] >= focal_threshold or divergence_field[j] <= collision_threshold
+            for j in neighbors
+        )
+        if collision_found:
+            cv_i_excluded.append(np.nan)
+        else:
+            cv_i_excluded.append(cv_field[i])
+
+    return np.array(cv_i_excluded)
