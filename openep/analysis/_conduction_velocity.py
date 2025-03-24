@@ -19,7 +19,7 @@
 """Module containing conduction velocity (CV) calculation methods and CV divergence method"""
 
 import math
-from vedo import *
+import numpy as np
 import pyvista as pv
 from scipy.optimize import minimize
 from scipy.interpolate import Rbf

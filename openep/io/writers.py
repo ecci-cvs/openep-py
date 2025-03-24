@@ -440,9 +440,9 @@ def _extract_surface_data(
     if fields.local_activation_time is None and fields.bipolar_voltage is None:
         surface_data['act_bip'] = empty_float_array
     elif fields.local_activation_time is None:
-        fields.local_activation_time = np.full_like(fields.bipolar_voltage, fill_value=np.NaN)
+        fields.local_activation_time = np.full_like(fields.bipolar_voltage, fill_value=np.nan)
     elif fields.bipolar_voltage is None:
-        fields.bipolar_voltage = np.full_like(fields.local_activation_time, fill_value=np.NaN)
+        fields.bipolar_voltage = np.full_like(fields.local_activation_time, fill_value=np.nan)
 
     if 'act_bip' not in surface_data:
         surface_data['act_bip'] = np.concatenate(
@@ -457,11 +457,11 @@ def _extract_surface_data(
         surface_data['uni_imp_frc'] = empty_float_array
     else:
         if fields.unipolar_voltage is None:
-            fields.unipolar_voltage = np.full(points.size // 3, fill_value=np.NaN)
+            fields.unipolar_voltage = np.full(points.size // 3, fill_value=np.nan)
         if fields.impedance is None:
-            fields.impedance = np.full(points.size // 3, fill_value=np.NaN)
+            fields.impedance = np.full(points.size // 3, fill_value=np.nan)
         if fields.force is None:
-            fields.force = np.full(points.size // 3, fill_value=np.NaN)
+            fields.force = np.full(points.size // 3, fill_value=np.nan)
 
     if 'uni_imp_frc' not in surface_data:
         surface_data['uni_imp_frc'] = np.concatenate(
