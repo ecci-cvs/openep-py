@@ -50,7 +50,7 @@ If a case has no fibre orientations (in `case.fields.longitudinal_fibres` and
 .. autofunction:: export_openCARP
 
 """
-
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import scipy.io
@@ -303,6 +303,7 @@ def export_csv(
         system,
         filename: str,
         selections: dict,
+        cell_data_selections: dict=None,
 ):
 
     """Export data in CSV format.
@@ -336,8 +337,32 @@ def export_csv(
         'Histogram': case.fields.histogram,
     }
 
-    df = pd.DataFrame()
+    _dictionary2csv(
+        available_exports=available_exports,
+        selections=selections,
+        filename=f'{Path(filename).stem}_points.csv'
+    )
 
+
+    if cell_data_selections is not None:
+        temp_mesh = mesh.compute_cell_sizes()
+        available_cell_exports = {
+            'Cell region': case.fields.cell_region,
+            'Cell area': temp_mesh.cell_data['Area']
+        }
+        _dictionary2csv(
+            available_exports=available_cell_exports,
+            selections=cell_data_selections,
+            filename=f'{Path(filename).stem}_cells.csv'
+        )
+
+def _dictionary2csv(
+        available_exports,
+        selections,
+        filename,
+):
+    """Converts diectionary and selection to a CSV file"""
+    df = pd.DataFrame()
     for field_name, checked in selections.items():
         header = field_name.lower().replace(" ", "_")
         if checked:
