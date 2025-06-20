@@ -340,9 +340,8 @@ def export_csv(
     _dictionary2csv(
         available_exports=available_exports,
         selections=selections,
-        filename=f'{Path(filename).stem}_points.csv'
+        filename=Path(filename).with_stem(Path(filename).stem + '_points').with_suffix('.csv')
     )
-
 
     if cell_data_selections is not None:
         temp_mesh = mesh.compute_cell_sizes()
@@ -353,7 +352,7 @@ def export_csv(
         _dictionary2csv(
             available_exports=available_cell_exports,
             selections=cell_data_selections,
-            filename=f'{Path(filename).stem}_cells.csv'
+            filename=Path(filename).with_stem(Path(filename).stem + '_cells').with_suffix('.csv')
         )
 
 def _dictionary2csv(
