@@ -210,7 +210,7 @@ def export_vtx(
         raise IndexError(f"Pacing site: Expecting {landmarks.internal_names}, received \"{pacing_site_internal_name}\".")
 
     landmark_name = landmarks.names[landmark_index]
-    site_index = int(landmark_name.replace('Pacing site ', ''))
+    site_index = int(float(landmark_name.replace('Pacing site ', '')))
 
     pacing_site_points = np.nonzero(case.fields.pacing_site == site_index)[0]
     n_points = pacing_site_points.size
