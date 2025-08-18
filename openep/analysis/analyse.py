@@ -18,6 +18,7 @@
 
 """Module containing analysis classes"""
 from ._conduction_velocity import *
+from .vector_field_tracer import VectorFieldTracer
 from ..case.case_routines import interpolate_general_cloud_points_onto_surface
 
 
@@ -36,8 +37,9 @@ class Analyse:
 
     """
     def __init__(self, case):
-        self.conduction_velocity = ConductionVelocity(case)
-        self.divergence = Divergence(case)
+        self.conduction_velocity: ConductionVelocity = ConductionVelocity(case)
+        self.divergence: Divergence = Divergence(case)
+        self.vector_field_tracer: VectorFieldTracer = VectorFieldTracer()
 
 
 class ConductionVelocity:
