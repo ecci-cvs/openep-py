@@ -100,7 +100,7 @@ def _create_trimesh(pyvista_mesh):
     """
 
     vertices = pyvista_mesh.points
-    faces = pyvista_mesh.faces.reshape(pyvista_mesh.n_faces, 4)[:, 1:]  # ignore to number of vertices per face
+    faces = pyvista_mesh.faces.reshape(pyvista_mesh.n_cells, 4)[:, 1:]  # ignore to number of vertices per face
 
     return trimesh.Trimesh(vertices, faces, process=False)
 
