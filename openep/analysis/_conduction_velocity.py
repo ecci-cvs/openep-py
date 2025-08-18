@@ -301,8 +301,8 @@ def radial_basis_function(
         local_activation_time (array):
             Array of local activation times corresponding to the bipolar electrogram points.
 
-        mesh (Mesh):
-            Mesh object containing point coordinates and methods (e.g., for computing derivatives).
+        case (Case):
+            Case to create Mesh object containing point coordinates and methods (e.g., for computing derivatives).
 
         project_on_surface (bool, optional):
             If True, projects the bipolar electrogram points onto the mesh surface before interpolation.
@@ -348,14 +348,19 @@ def radial_basis_function(
     gradients = deriv['gradient']
 
     grad_norm_sq = gradients[:, 0] ** 2 + gradients[:, 1] ** 2 + gradients[:, 2] ** 2
-    cv = 1 / np.sqrt(grad_norm_sq)
+    # CV at mesh points (already interpolated)
+    cv_interpolated = 1 / np.sqrt(grad_norm_sq)
 
     tree = KDTree(mesh.points, leaf_size=leaf_size)
     _, indices = tree.query(bipolar_egm_pts, k=1)
-    cv_centroids = mesh.points[indices.flatten()]
-    cv_values = cv[indices.flatten()]
 
-    return cv_values, cv_centroids
+    # We are using the cv_centroids at the bi_egm location
+    # rather than the ones moved closer to the mesh
+    # cv_centroids = mesh.points[indices.flatten()]
+    cv_centroids = bipolar_egm_pts
+    cv_values = cv_interpolated[indices.flatten()]
+
+    return cv_values, cv_centroids, cv_interpolated
 
 
 def divergence(
