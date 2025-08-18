@@ -417,11 +417,18 @@ class Interpolator:
         else:
             self.method_kws = {}
 
-        self.interpolate = self.method(
-            self.points,
-            self.field,
-            **self.method_kws,
-        )
+        if self.method is scipy.interpolate.Rbf:
+            self.interpolate = self.method(
+                self.points[:,0], self.points[:,1], self.points[:,2],
+                self.field,
+                **self.method_kws,
+            )
+        else:
+            self.interpolate = self.method(
+                self.points,
+                self.field,
+                **self.method_kws,
+            )
 
     def __call__(self, surface_points, max_distance=None):
         """Interpolate the scalar field onto a new set of coordinates
@@ -437,7 +444,14 @@ class Interpolator:
             interpolated_field (ndarray): Scalar field interpolated onto the new points.
         """
 
-        interpolated_field = self.interpolate(surface_points)
+        if self.method is scipy.interpolate.Rbf:
+            interpolated_field = self.interpolate(
+                surface_points[:,0],
+                surface_points[:,1],
+                surface_points[:,2]
+            )
+        else:
+            interpolated_field = self.interpolate(surface_points)
 
         if max_distance is not None:
             within_distance = calculate_points_within_distance(
