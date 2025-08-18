@@ -424,10 +424,14 @@ def divergence(
     basic_mesh = pv.PolyData(temp_mesh.points, temp_mesh.faces)
     interpolation_kws = dict() if interpolation_kws is None else interpolation_kws
 
+    tree = KDTree(temp_mesh.points, leaf_size=2)
+    dist, ind = tree.query(bipolar_egm_pts, k=1)
+    closest_mesh_points_to_egm_points = temp_mesh.points[ind.flat]
+
     interpolated_scalar = interpolate_general_cloud_points_onto_surface(
         case=case,
         cloud_values=local_activation_time,
-        cloud_points=bipolar_egm_pts,
+        cloud_points=closest_mesh_points_to_egm_points,
         **interpolation_kws
     )
 
