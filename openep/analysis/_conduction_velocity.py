@@ -321,6 +321,18 @@ def radial_basis_function(
         leaf_size (int, optional):
             Leaf size parameter for the KDTree used in nearest neighbor queries.
             Defaults to 5.
+
+    Returns:
+        tuple:
+            cv_values (ndarray):
+              Array of conduction velocity values at the bipolar electrogram point locations.
+
+            cv_centroids (ndarray):
+              Array of point coordinates (Nx3) corresponding to the positions of the returned `cv_values`.
+              Default these are the original `bipolar_egm_pts`.
+
+            cv_interpolated (ndarray):
+              Array of conduction velocity values interpolated at all mesh points.
     """
     mesh = case.create_mesh()
 
