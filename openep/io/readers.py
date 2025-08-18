@@ -190,19 +190,21 @@ def load_opencarp(
     )
 
     # Fibres data
+    n_cells = indices_data.shape[0]
     if fibres is None:
-        fibres_data = np.tile([1, 0, 0], (len(data)-1, 1))
+        _fibres = np.tile([1, 0, 0], (n_cells, 1))
     else:
         with open(fibres, 'r') as f:
             first_value = f.readline().strip().split()[0]
 
         if first_value == "1":
-            fibres_data = np.loadtxt(fibres, skiprows=1)
+            _fibres = np.loadtxt(fibres, skiprows=1)
         else:
-            fibres_data = np.loadtxt(fibres)
+            _fibres = np.loadtxt(fibres)
+        _fibres = _fibres[0:n_cells]
 
-    arrows = Vectors(
-        fibres=fibres_data,
+    vectors = Vectors(
+        fibres=_fibres,
         linear_connections=linear_connection_data if len(linear_connection_data) > 0 else None,
         linear_connection_regions=linear_connection_regions if len(linear_connection_regions) > 0 else None,
     )
@@ -211,7 +213,7 @@ def load_opencarp(
     ablation = Ablation()
     notes = np.asarray([], dtype=object)
 
-    return Case(name, points_data, indices_data, fields, electric, ablation, notes, arrows)
+    return Case(name, points_data, indices_data, fields, electric, ablation, notes, vectors)
 
 
 def load_vtk(filename, name=None):

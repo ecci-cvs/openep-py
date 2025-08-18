@@ -3,7 +3,6 @@ import numpy as np
 
 __all__ = []
 
-
 @attrs(auto_attribs=True, auto_detect=True)
 class Vectors:
     """
@@ -18,7 +17,7 @@ class Vectors:
 
     # TODO: move divergence arrows into Arrows class
     # TODO: remove longitudinal and transversal arrows from Fields class
-    fibres: np.ndarray = None
+    _fibres: np.ndarray = None
     divergence: np.ndarray = None
     linear_connections: np.ndarray = None
     linear_connection_regions: np.ndarray = None
@@ -42,6 +41,14 @@ class Vectors:
 
     def __contains__(self, arrow):
         return arrow in self.__dict__.keys()
+
+    @property
+    def fibres(self):
+        return self._fibres
+
+    @fibres.setter
+    def fibres(self, array):
+        self._fibres = None if np.all(array == [1, 0, 0]) else array
 
     @property
     def linear_connection_regions_names(self):
@@ -74,40 +81,34 @@ def extract_vector_data(surface_data, indices):
         vectors (Vectors): Class for storing information about arrows/vectors and lines on surface
     """
     vectors = Vectors()
-    n_fibres = indices.shape[0]
+    n_cells = indices.shape[0]
 
-    # add fibres
-    default_fibres_data = np.tile([1, 0, 0], (n_fibres, 1))
-
-    if not surface_data.get('signalMaps'):
-        vectors.fibres = default_fibres_data
+    # add default fibres
+    vectors.fibres = np.tile([1, 0, 0], (n_cells, 1))
+    signal_props = surface_data.get('signalMaps')
+    if not signal_props:
         return vectors
 
-    signal_props = surface_data.get('signalMaps')
-
+    # retrieve linear_connections indices
     lin_conns = signal_props.get('linear_connections')
-    if lin_conns is not None:
-        if isinstance(lin_conns, dict):
-            vectors.linear_connections = lin_conns.get('value')
-        else:
-            vectors.linear_connections = lin_conns
+    vectors.linear_connections = lin_conns
+    if isinstance(lin_conns, dict):
+        vectors.linear_connections = lin_conns.get('value')
 
+    # retrieve linear_connections region associated
     lin_conns_region = signal_props.get('linear_connection_regions')
-    if lin_conns_region is not None:
-        if isinstance(lin_conns_region, dict):
-            vectors.linear_connection_regions = lin_conns_region.get('value')
-        else:
-            vectors.linear_connection_regions = lin_conns_region
+    vectors.linear_connection_regions = lin_conns_region
+    if isinstance(lin_conns_region, dict):
+        vectors.linear_connection_regions = lin_conns_region.get('value')
 
-        n_fibres += len(vectors.linear_connection_regions)
+    # retrieve fibres
+    _fibres = signal_props.get('fibres')
+    if isinstance(_fibres, dict):
+        _fibres = _fibres.get('value')
 
-    fibres = signal_props.get('fibres')
-    if fibres is not None:
-        if isinstance(fibres, dict):
-            vectors.fibres = fibres.get('value')
-        else:
-            vectors.linear_connection_regions = lin_conns_region
-    else:
-        vectors.fibres = default_fibres_data
+    if _fibres is not None:
+        # Ensure fibres match elem/face data size
+        # Exclude fibre data associated with linear regions
+        vectors.fibres = _fibres[0:n_cells]
 
     return vectors
