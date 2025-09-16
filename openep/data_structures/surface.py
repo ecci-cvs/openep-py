@@ -99,22 +99,6 @@ class Fields:
             mesh (pyvista.PolyData): mesh from which Fields will be created.
         """
 
-        # List of attributes to keep as cell_data
-        protected = ["cell_region", "transverse_fibres", "longitudinal_fibres"]
-
-        # Backup and remove protected arrays if they exist
-        protected_data = {}
-        for name in protected:
-            if name in mesh.cell_data:
-                protected_data[name] = mesh.cell_data.pop(name)
-
-        # Convert everything else from cell_data → point_data
-        mesh = mesh.cell_data_to_point_data()
-
-        # Restore protected arrays back into cell_data
-        for name, data in protected_data.items():
-            mesh.cell_data[name] = data
-
         fields = cls()
         
         #Load all fieldds from mesh
