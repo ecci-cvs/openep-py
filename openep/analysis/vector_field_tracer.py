@@ -16,10 +16,8 @@
 # You should have received a copy of the GNU General Public License along
 # with this program (LICENSE.txt).  If not, see <http://www.gnu.org/licenses/>
 
-from evenlyspacedstreamlines import evenly_spaced_streamlines
 import pyvista as pv
 import numpy as np
-
 
 __all__ = ['VectorFieldTracer']
 
@@ -92,6 +90,7 @@ class VectorFieldTracer:
             The returned array can be passed to ``pyvista.Plotter.add_mesh`` to
             visualise fibre streamlines on the mesh.
         """
+        from evenlyspacedstreamlines import evenly_spaced_streamlines
 
         # Obtain triangles from face
         faces = mesh.faces.reshape((-1, 4))
