@@ -100,13 +100,11 @@ class Fields:
         """
 
         fields = cls()
+        
+        #Load all fieldds from mesh
         for point_data in mesh.point_data:
-            if point_data not in fields:
-                continue
             fields[point_data] = np.asarray(mesh.point_data[point_data])
         for cell_data in mesh.cell_data:
-            if cell_data not in fields:
-                continue
             fields[cell_data] = np.asarray(mesh.cell_data[cell_data])
 
         return fields

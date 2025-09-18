@@ -233,6 +233,8 @@ def extract_ablation_data(ablation_data, rfindex_data=None):
             return ablation
     except KeyError as e:
         return ablation
+    except AttributeError as e:
+        return ablation
 
     ablation.times = ablation_data['originaldata']['ablparams']['time'].astype(float)
     ablation.power = ablation_data['originaldata']['ablparams']['power'].astype(float)

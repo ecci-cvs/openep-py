@@ -50,7 +50,7 @@ If a case has no fibre orientations (in `case.fields.longitudinal_fibres` and
 .. autofunction:: export_openCARP
 
 """
-
+from pathlib import Path
 import pandas as pd
 import numpy as np
 import scipy.io
@@ -146,15 +146,22 @@ def export_openCARP(
             )
 
     # Save fibres
-    if case.vectors.fibres is not None:
-        with open(output_path.with_suffix('.lon'), 'w') as f:
-            f.write("1\n")
-            np.savetxt(
-                f,
-                case.vectors.fibres,
-                fmt="%.6f",
-                comments='',
-            )
+    if case.vectors.fibres is None:
+        _fibres = np.tile([1, 0, 0], (n_lines, 1))
+    else:
+        _dummy_vals_for_lin_connections = np.tile([1, 0, 0], (n_lin_conns, 1))
+        _fibres = np.vstack([case.vectors.fibres,_dummy_vals_for_lin_connections])
+
+    assert _fibres.shape[0] == n_lines, "Number of .elem lines do not match .lon lines"
+
+    with open(output_path.with_suffix('.lon'), 'w') as f:
+        f.write("1\n")
+        np.savetxt(
+            f,
+            _fibres,
+            fmt="%.6f",
+            comments='',
+        )
 
     # Saving pacing sites if they exist
     if case.fields.pacing_site is None or not export_pacing_site:
@@ -210,7 +217,7 @@ def export_vtx(
         raise IndexError(f"Pacing site: Expecting {landmarks.internal_names}, received \"{pacing_site_internal_name}\".")
 
     landmark_name = landmarks.names[landmark_index]
-    site_index = int(landmark_name.replace('Pacing site ', ''))
+    site_index = int(float(landmark_name.replace('Pacing site ', '')))
 
     pacing_site_points = np.nonzero(case.fields.pacing_site == site_index)[0]
     n_points = pacing_site_points.size
@@ -303,6 +310,7 @@ def export_csv(
         system,
         filename: str,
         selections: dict,
+        cell_data_selections: dict=None,
 ):
 
     """Export data in CSV format.
@@ -336,8 +344,31 @@ def export_csv(
         'Histogram': case.fields.histogram,
     }
 
-    df = pd.DataFrame()
+    _dictionary2csv(
+        available_exports=available_exports,
+        selections=selections,
+        filename=Path(filename).with_stem(Path(filename).stem + '_points').with_suffix('.csv')
+    )
 
+    if cell_data_selections is not None:
+        temp_mesh = mesh.compute_cell_sizes()
+        available_cell_exports = {
+            'Cell region': case.fields.cell_region,
+            'Cell area': temp_mesh.cell_data['Area']
+        }
+        _dictionary2csv(
+            available_exports=available_cell_exports,
+            selections=cell_data_selections,
+            filename=Path(filename).with_stem(Path(filename).stem + '_cells').with_suffix('.csv')
+        )
+
+def _dictionary2csv(
+        available_exports,
+        selections,
+        filename,
+):
+    """Converts diectionary and selection to a CSV file"""
+    df = pd.DataFrame()
     for field_name, checked in selections.items():
         header = field_name.lower().replace(" ", "_")
         if checked:

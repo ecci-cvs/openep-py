@@ -145,7 +145,7 @@ def test_no_field(case):
 
 def test_remove_unreferenced_points(dataset_2, dataset_2_mesh):
 
-    expected_indices = dataset_2_mesh.faces.reshape(dataset_2_mesh.n_faces, 4)[:, 1:]
+    expected_indices = dataset_2_mesh.faces.reshape(dataset_2_mesh.n_cells, 4)[:, 1:]
     dataset_2.remove_unreferenced_points()
 
     assert_allclose(dataset_2_mesh.points, dataset_2.points)
