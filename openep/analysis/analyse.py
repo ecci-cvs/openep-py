@@ -18,6 +18,7 @@
 
 """Module containing analysis classes"""
 from ._conduction_velocity import *
+from .vector_field_tracer import VectorFieldTracer
 from ..case.case_routines import interpolate_general_cloud_points_onto_surface
 
 
@@ -36,8 +37,9 @@ class Analyse:
 
     """
     def __init__(self, case):
-        self.conduction_velocity = ConductionVelocity(case)
-        self.divergence = Divergence(case)
+        self.conduction_velocity: ConductionVelocity = ConductionVelocity(case)
+        self.divergence: Divergence = Divergence(case)
+        self.vector_field_tracer: VectorFieldTracer = VectorFieldTracer()
 
 
 class ConductionVelocity:
@@ -131,7 +133,15 @@ class ConductionVelocity:
                - self._case.electric.annotations.reference_activation_time[include])
 
         cv_method = supported_cv_methods[method]
-        self.values, self.centers = cv_method(bipolar_egm_pts, lat, self._case, **method_kwargs)
+        if method == 'rbf':
+            ignore_interpolation = method_kwargs.pop('ignore_interpolation', False)
+            self.values, self.centers, field = cv_method(bipolar_egm_pts, lat, self._case, **method_kwargs)
+            if ignore_interpolation:
+                self._case.fields.conduction_velocity = field
+                apply_scalar_field = False
+
+        else:
+            self.values, self.centers = cv_method(bipolar_egm_pts, lat, self._case, **method_kwargs)
 
         if apply_scalar_field:
             self._case.fields.conduction_velocity = interpolate_general_cloud_points_onto_surface(

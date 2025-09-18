@@ -301,8 +301,8 @@ def radial_basis_function(
         local_activation_time (array):
             Array of local activation times corresponding to the bipolar electrogram points.
 
-        mesh (Mesh):
-            Mesh object containing point coordinates and methods (e.g., for computing derivatives).
+        case (Case):
+            Case to create Mesh object containing point coordinates and methods (e.g., for computing derivatives).
 
         project_on_surface (bool, optional):
             If True, projects the bipolar electrogram points onto the mesh surface before interpolation.
@@ -321,6 +321,18 @@ def radial_basis_function(
         leaf_size (int, optional):
             Leaf size parameter for the KDTree used in nearest neighbor queries.
             Defaults to 5.
+
+    Returns:
+        tuple:
+            cv_values (ndarray):
+              Array of conduction velocity values at the bipolar electrogram point locations.
+
+            cv_centroids (ndarray):
+              Array of point coordinates (Nx3) corresponding to the positions of the returned `cv_values`.
+              Default these are the original `bipolar_egm_pts`.
+
+            cv_interpolated (ndarray):
+              Array of conduction velocity values interpolated at all mesh points.
     """
     mesh = case.create_mesh()
 
@@ -348,14 +360,19 @@ def radial_basis_function(
     gradients = deriv['gradient']
 
     grad_norm_sq = gradients[:, 0] ** 2 + gradients[:, 1] ** 2 + gradients[:, 2] ** 2
-    cv = 1 / np.sqrt(grad_norm_sq)
+    # CV at mesh points (already interpolated)
+    cv_interpolated = 1 / np.sqrt(grad_norm_sq)
 
     tree = KDTree(mesh.points, leaf_size=leaf_size)
     _, indices = tree.query(bipolar_egm_pts, k=1)
-    cv_centroids = mesh.points[indices.flatten()]
-    cv_values = cv[indices.flatten()]
 
-    return cv_values, cv_centroids
+    # We are using the cv_centroids at the bi_egm location
+    # rather than the ones moved closer to the mesh
+    # cv_centroids = mesh.points[indices.flatten()]
+    cv_centroids = bipolar_egm_pts
+    cv_values = cv_interpolated[indices.flatten()]
+
+    return cv_values, cv_centroids, cv_interpolated
 
 
 def divergence(
@@ -407,10 +424,14 @@ def divergence(
     basic_mesh = pv.PolyData(temp_mesh.points, temp_mesh.faces)
     interpolation_kws = dict() if interpolation_kws is None else interpolation_kws
 
+    tree = KDTree(temp_mesh.points, leaf_size=2)
+    dist, ind = tree.query(bipolar_egm_pts, k=1)
+    closest_mesh_points_to_egm_points = temp_mesh.points[ind.flat]
+
     interpolated_scalar = interpolate_general_cloud_points_onto_surface(
         case=case,
         cloud_values=local_activation_time,
-        cloud_points=bipolar_egm_pts,
+        cloud_points=closest_mesh_points_to_egm_points,
         **interpolation_kws
     )
 

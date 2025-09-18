@@ -146,15 +146,22 @@ def export_openCARP(
             )
 
     # Save fibres
-    if case.vectors.fibres is not None:
-        with open(output_path.with_suffix('.lon'), 'w') as f:
-            f.write("1\n")
-            np.savetxt(
-                f,
-                case.vectors.fibres,
-                fmt="%.6f",
-                comments='',
-            )
+    if case.vectors.fibres is None:
+        _fibres = np.tile([1, 0, 0], (n_lines, 1))
+    else:
+        _dummy_vals_for_lin_connections = np.tile([1, 0, 0], (n_lin_conns, 1))
+        _fibres = np.vstack([case.vectors.fibres,_dummy_vals_for_lin_connections])
+
+    assert _fibres.shape[0] == n_lines, "Number of .elem lines do not match .lon lines"
+
+    with open(output_path.with_suffix('.lon'), 'w') as f:
+        f.write("1\n")
+        np.savetxt(
+            f,
+            _fibres,
+            fmt="%.6f",
+            comments='',
+        )
 
     # Saving pacing sites if they exist
     if case.fields.pacing_site is None or not export_pacing_site:
