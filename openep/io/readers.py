@@ -234,12 +234,6 @@ def load_vtk(filename, name=None):
     name = name if name is not None else os.path.basename(filename)
     mesh = pyvista.read(filename)
 
-    # fibres data
-    fibres_data = np.tile([1, 0, 0], (mesh.n_cells-1, 1))
-    vectors = Vectors(
-        fibres=fibres_data,
-    )
-
     case = Case(
         name=name,
         points=mesh.points,
@@ -247,7 +241,7 @@ def load_vtk(filename, name=None):
         fields=Fields.from_pyvista(mesh),
         electric = Electric(),
         ablation = Ablation(),
-        vectors=vectors,
+        vectors=None,
         notes = np.asarray([], dtype=object),
     )
 
