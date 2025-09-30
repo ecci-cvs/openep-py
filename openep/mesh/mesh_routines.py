@@ -66,7 +66,8 @@ Calculating mesh properties on a per-region basis
 """
 
 from attr import attrs
-from typing import Union, Optional
+from typing import Dict, Union, Optional, List, Tuple
+from pathlib import Path
 
 import numpy as np
 import scipy.stats
@@ -772,3 +773,173 @@ def mean_field_per_region(mesh, field, cell_region):
         mean_field_values[index] = np.nanmean(field[region_mask])
 
     return mean_field_values
+
+def bcpd_register(
+    source_pts: np.ndarray,
+    target_pts: np.ndarray,
+    *,
+    bcpd_path: Union[str, Path] = "bcpd",
+    bcpd_args: Dict[str, Union[str, int, float]],
+    work_dir: Optional[Union[str, Path]] = None,
+    log_file: Union[str, Path] = "bcpd.log",
+    visualise: bool = False,
+    keep_files: bool = False,
+    strict_flags: bool = False,
+) -> Tuple[np.ndarray, Dict[str, Union[str, float]]]:
+    """
+    Run BCPD and return final registered points + estimated parameters.
+
+    Parameters
+    ----------
+    source_pts : (M,3) array
+        Moving/source point cloud.
+    target_pts : (N,3) array
+        Fixed/target point cloud.
+    bcpd_path : str or Path
+        Path to the BCPD executable.
+    bcpd_args : dict
+        Keyword → value for BCPD flags (e.g. {"beta":2,"lam":10,"outlier":0.1,"s":"Y"}).
+    work_dir : str or Path, optional
+        Parent directory for a temporary workspace.
+    log_file : str or Path
+        Filename for logging inside the workspace.
+    visualise : bool
+        If True, launch vedo-based interactive viewer.
+    keep_files : bool
+        If True, do not delete the workspace on exit.
+    strict_flags : bool
+        If True, error on unknown BCPD flags.
+
+    Returns
+    -------
+    registered : (M,3) array
+        The final deformed source cloud ("y").
+    params : dict
+        Key → value from `bcpd.param` (if produced).
+    """
+    import shutil
+    import shlex
+    import tempfile
+    import subprocess
+
+    def _read_optpath(path: Path) -> List[np.ndarray]:
+        """
+        Parse BCPD’s binary trajectory file `optpath.bin` following demo/optpath.m:
+
+        int32 N          # number of target points (unused here)
+        int32 D          # spatial dimension (2 or 3)
+        int32 M          # number of source points
+        int32 L          # number of saved iterations
+        double T[D*M*L]  # trajectory of source: Y(:)
+        double X[D*N]    # final target cloud (skipped)
+
+        Returns
+        -------
+        frames : list of (M, D) float64 arrays, one per iteration
+        """
+        with open(path, "rb") as f:
+            header = np.fromfile(f, dtype=np.int32, count=4)
+            if header.size < 4:
+                raise ValueError(f"{path} is too short for optpath header")
+            _, D, M, L = header
+            count = int(D) * int(M) * int(L)
+            T = np.fromfile(f, dtype=np.float64, count=count)
+            # skip the final target cloud: D * N doubles
+            # np.fromfile(f, dtype=np.float64, count=D*header[0])
+        if T.size != count:
+            raise ValueError(f"Unexpected trajectory length in {path}")
+        # reshape in Fortran order to match MATLAB's [D x M x L]
+        T = T.reshape((D, M, L), order="F")
+        return [T[:, :, k].T for k in range(L)]
+
+    _FLAG_ALIASES: Dict[str, str] = {
+        "beta": "b",
+        "lam": "l",
+        "outlier": "w",
+        "kappa": "k",
+        "gamma": "g",
+        "kernel_id": "G",  # 0=Gauss,1=IMQ,2=RatQuad,3=Laplace
+        # 's' passed verbatim e.g. "-sY"
+    }
+
+    # validate shapes
+    for name, arr in (("source_pts", source_pts), ("target_pts", target_pts)):
+        if arr.ndim != 2 or arr.shape[1] != 3:
+            raise ValueError(f"{name} must be (N,3)")
+
+    # numeric sanity
+    for key in ("beta", "lam", "kappa", "gamma", "outlier"):
+        if key in bcpd_args:
+            v = float(bcpd_args[key])
+            if key == "outlier" and not (0 < v < 1):
+                raise ValueError("outlier must be in (0,1)")
+            if key != "outlier" and v <= 0:
+                raise ValueError(f"{key} must be positive")
+
+    # make workspace
+    ws = Path(tempfile.mkdtemp(dir=work_dir))
+    src_txt = ws / "source.txt"
+    tgt_txt = ws / "target.txt"
+    np.savetxt(src_txt, source_pts, fmt="%.8f")
+    np.savetxt(tgt_txt, target_pts, fmt="%.8f")
+
+    # setup logging
+
+    # build command
+    cmd = [str(bcpd_path), "-x", str(tgt_txt), "-y", str(src_txt)]
+    for key, val in bcpd_args.items():
+        flag = _FLAG_ALIASES.get(key, key)
+        if strict_flags and len(flag) > 1 and flag not in _FLAG_ALIASES.values():
+            raise ValueError(f"Unknown BCPD option '{key}'")
+        if flag == "s" and isinstance(val, str):
+            cmd.append(f"-s{val}")
+        else:
+            cmd.extend([f"-{flag}", str(val)])
+    print("Running: %s", " ".join(shlex.quote(c) for c in cmd))
+
+    # execute BCPD
+    proc = subprocess.Popen(
+        cmd, cwd=ws, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+    assert proc.stdout
+    for line in proc.stdout:
+        print(line.rstrip())
+    proc.wait()
+    if proc.returncode != 0:
+        raise RuntimeError(f"BCPD exited {proc.returncode}; see log")
+
+    # parse trajectory
+    frames: List[np.ndarray] = []
+    for fname in (".optpath.bin", "optpath.bin"):
+        p = ws / fname
+        if p.exists():
+            frames = _read_optpath(p)
+            break
+
+    # load final registered cloud
+    for cand in ("output_y.txt", "y.txt", "Y.txt", "output_x.txt", "x.txt", "X.txt"):
+        if (ws / cand).exists():
+            registered_pts = np.loadtxt(ws / cand)
+            break
+    else:
+        raise FileNotFoundError("No registered output file found in workspace")
+
+    # parse params if present
+    params: Dict[str, Union[str, float]] = {}
+    pfile = ws / "bcpd.param"
+    if pfile.exists():
+        for ln in pfile.read_text().splitlines():
+            if "=" in ln:
+                k, v = map(str.strip, ln.split("=", 1))
+                params[k] = float(v) if v.replace(".", "", 1).isdigit() else v
+
+    # # visualize if requested
+    # if visualise:
+    #     _visualise_vedo(source_pts, source_cells, target_pts, target_cells, registered_pts, frames or None)
+
+    # cleanup
+    if not keep_files:
+        shutil.rmtree(ws, ignore_errors=True)
+        print("Removed workspace %s", ws)
+
+    return registered_pts, params
