@@ -233,16 +233,6 @@ def _load_mat_below_v73(filename):
         simplify_cells=True,
     )['userdata']
 
-    # Ensure data are the right shape
-    data['electric']['names'] = np.atleast_1d(data['electric']['names'])
-    data['electric']['include'] = np.atleast_1d(data['electric']['include'])
-    data['electric']['electrodeNames_bip'] = np.atleast_1d(data['electric']['electrodeNames_bip'])
-    data['electric']['egmX'] = np.atleast_2d(data['electric']['egmX']) if data['electric']['egmX'].size!=0 else np.array([])
-    data['electric']['egm'] = np.atleast_1d(data['electric']['egm'])
-    data['electric']['egmGain'] = np.atleast_1d(data['electric']['egmGain'])
-    data['electric']['egmSurfX'] = np.atleast_2d(data['electric']['egmSurfX']) if data['electric']['egmSurfX'].size!=0 else np.array([])
-    data['electric']['barDirection'] = np.atleast_2d(data['electric']['barDirection']) if data['electric']['barDirection'].size!=0 else np.array([])
-
     data['electric']['tags'] = _decode_tags(data['electric']['tags'])
 
     data['electric']['impedances']['time'] = _cast_to_float(data['electric']['impedances']['time'])
