@@ -781,6 +781,7 @@ def bcpd_register(
     bcpd_path: Union[str, Path] = "bcpd",
     bcpd_args: Dict[str, Union[str, int, float]],
     work_dir: Optional[Union[str, Path]] = None,
+    temp_dir_name: Optional[str] = None,
     log_file: Union[str, Path] = "bcpd.log",
     visualise: bool = False,
     keep_files: bool = False,
@@ -801,6 +802,10 @@ def bcpd_register(
         Keyword → value for BCPD flags (e.g. {"beta":2,"lam":10,"outlier":0.1,"s":"Y"}).
     work_dir : str or Path, optional
         Parent directory for a temporary workspace.
+     temp_dir_name : str, optional
+        If provided, create the workspace as ``Path(work_dir or tempfile.gettempdir())/temp_dir_name``.
+        If the directory already exists, a ``FileExistsError`` is raised. If not provided, a
+        random directory is created via ``tempfile.mkdtemp(dir=work_dir)`` (previous behavior).        
     log_file : str or Path
         Filename for logging inside the workspace.
     visualise : bool
@@ -877,7 +882,13 @@ def bcpd_register(
                 raise ValueError(f"{key} must be positive")
 
     # make workspace
-    ws = Path(tempfile.mkdtemp(dir=work_dir))
+    if temp_dir_name is not None:
+        parent = Path(work_dir) if work_dir is not None else Path(tempfile.gettempdir())
+        ws = parent / temp_dir_name
+        # Avoid accidental reuse of a prior run's files
+        ws.mkdir(parents=True, exist_ok=False)
+    else:
+        ws = Path(tempfile.mkdtemp(dir=work_dir))
     src_txt = ws / "source.txt"
     tgt_txt = ws / "target.txt"
     np.savetxt(src_txt, source_pts, fmt="%.8f")
