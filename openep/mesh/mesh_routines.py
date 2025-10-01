@@ -66,7 +66,7 @@ Calculating mesh properties on a per-region basis
 """
 
 from attr import attrs
-from typing import Dict, Union, Optional, List, Tuple
+from typing import Callable, Dict, Union, Optional, List, Tuple
 from pathlib import Path
 
 import numpy as np
@@ -783,6 +783,7 @@ def bcpd_register(
     work_dir: Optional[Union[str, Path]] = None,
     temp_dir_name: Optional[str] = None,
     log_file: Union[str, Path] = "bcpd.log",
+    on_stdout: Optional[Callable[[str], None]] = None,    
     visualise: bool = False,
     keep_files: bool = False,
     strict_flags: bool = False,
@@ -802,12 +803,15 @@ def bcpd_register(
         Keyword → value for BCPD flags (e.g. {"beta":2,"lam":10,"outlier":0.1,"s":"Y"}).
     work_dir : str or Path, optional
         Parent directory for a temporary workspace.
-     temp_dir_name : str, optional
+    temp_dir_name : str, optional
         If provided, create the workspace as ``Path(work_dir or tempfile.gettempdir())/temp_dir_name``.
         If the directory already exists, a ``FileExistsError`` is raised. If not provided, a
         random directory is created via ``tempfile.mkdtemp(dir=work_dir)`` (previous behavior).        
     log_file : str or Path
-        Filename for logging inside the workspace.
+        Filename (or absolute path) for logging inside the workspace. Lines from BCPD stdout are
+        appended here (with carriage-return progress translated to newlines) when supplied.
+    on_stdout : Callable[[str], None], optional
+        If provided, called with each logical line of BCPD stdout as it arrives. Useful for GUI live updates.
     visualise : bool
         If True, launch vedo-based interactive viewer.
     keep_files : bool
@@ -894,7 +898,16 @@ def bcpd_register(
     np.savetxt(src_txt, source_pts, fmt="%.8f")
     np.savetxt(tgt_txt, target_pts, fmt="%.8f")
 
-    # setup logging
+    # resolve log file path (optional tee)
+    log_fp = None
+    log_path: Optional[Path] = None
+    if log_file:
+        log_path = Path(log_file)
+        if not log_path.is_absolute():
+            log_path = ws / log_path
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        # line-buffered text file for live tailing
+        log_fp = open(log_path, "a", encoding="utf-8")
 
     # build command
     cmd = [str(bcpd_path), "-x", str(tgt_txt), "-y", str(src_txt)]
@@ -910,12 +923,44 @@ def bcpd_register(
 
     # execute BCPD
     proc = subprocess.Popen(
-        cmd, cwd=ws, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        cmd, cwd=ws, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
     )
     assert proc.stdout
-    for line in proc.stdout:
-        print(line.rstrip())
+
+    def _iter_records(stream):
+        """Yield logical records from a text stream, splitting on CR or LF.
+        Many CLIs print progress with carriage returns ("\r"). We treat both
+        "\r" and "\n" as record separators so GUIs/logs can show incremental lines.
+        """
+        buf: List[str] = []
+        while True:
+            ch = stream.read(1)
+            if ch == "" or ch is None:
+                break
+            if ch in ("\r", "\n"):
+                if buf:
+                    yield "".join(buf)
+                buf.clear()
+                continue
+            buf.append(ch)
+        if buf:
+            yield "".join(buf)
+
+    for rec in _iter_records(proc.stdout):
+        if on_stdout is not None:
+            try:
+                on_stdout(rec)
+            except Exception:
+                # do not break the run if UI callback fails
+                pass
+        if log_fp is not None:
+            log_fp.write(rec + "\n")
+            log_fp.flush()
+        else:
+            print(rec)
     proc.wait()
+    if log_fp is not None:
+        log_fp.close()
     if proc.returncode != 0:
         raise RuntimeError(f"BCPD exited {proc.returncode}; see log")
 
