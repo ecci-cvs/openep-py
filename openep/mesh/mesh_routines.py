@@ -87,6 +87,7 @@ __all__ = [
     "voxelise",
     "low_field_area_per_region",
     "mean_field_per_region",
+    "read_bcpd_optpath"
 ]
 
 
@@ -774,6 +775,36 @@ def mean_field_per_region(mesh, field, cell_region):
 
     return mean_field_values
 
+def read_optpath(path: Path) -> List[np.ndarray]:
+    """
+    Parse BCPD’s binary trajectory file `optpath.bin` following demo/optpath.m:
+
+    int32 N          # number of target points (unused here)
+    int32 D          # spatial dimension (2 or 3)
+    int32 M          # number of source points
+    int32 L          # number of saved iterations
+    double T[D*M*L]  # trajectory of source: Y(:)
+    double X[D*N]    # final target cloud (skipped)
+
+    Returns
+    -------
+    frames : list of (M, D) float64 arrays, one per iteration
+    """
+    with open(path, "rb") as f:
+        header = np.fromfile(f, dtype=np.int32, count=4)
+        if header.size < 4:
+            raise ValueError(f"{path} is too short for optpath header")
+        _, D, M, L = header
+        count = int(D) * int(M) * int(L)
+        T = np.fromfile(f, dtype=np.float64, count=count)
+        # skip the final target cloud: D * N doubles
+        # np.fromfile(f, dtype=np.float64, count=D*header[0])
+    if T.size != count:
+        raise ValueError(f"Unexpected trajectory length in {path}")
+    # reshape in Fortran order to match MATLAB's [D x M x L]
+    T = T.reshape((D, M, L), order="F")
+    return [T[:, :, k].T for k in range(L)]
+
 def bcpd_register(
     source_pts: np.ndarray,
     target_pts: np.ndarray,
@@ -830,36 +861,6 @@ def bcpd_register(
     import shlex
     import tempfile
     import subprocess
-
-    def _read_optpath(path: Path) -> List[np.ndarray]:
-        """
-        Parse BCPD’s binary trajectory file `optpath.bin` following demo/optpath.m:
-
-        int32 N          # number of target points (unused here)
-        int32 D          # spatial dimension (2 or 3)
-        int32 M          # number of source points
-        int32 L          # number of saved iterations
-        double T[D*M*L]  # trajectory of source: Y(:)
-        double X[D*N]    # final target cloud (skipped)
-
-        Returns
-        -------
-        frames : list of (M, D) float64 arrays, one per iteration
-        """
-        with open(path, "rb") as f:
-            header = np.fromfile(f, dtype=np.int32, count=4)
-            if header.size < 4:
-                raise ValueError(f"{path} is too short for optpath header")
-            _, D, M, L = header
-            count = int(D) * int(M) * int(L)
-            T = np.fromfile(f, dtype=np.float64, count=count)
-            # skip the final target cloud: D * N doubles
-            # np.fromfile(f, dtype=np.float64, count=D*header[0])
-        if T.size != count:
-            raise ValueError(f"Unexpected trajectory length in {path}")
-        # reshape in Fortran order to match MATLAB's [D x M x L]
-        T = T.reshape((D, M, L), order="F")
-        return [T[:, :, k].T for k in range(L)]
 
     _FLAG_ALIASES: Dict[str, str] = {
         "beta": "b",
@@ -964,13 +965,13 @@ def bcpd_register(
     if proc.returncode != 0:
         raise RuntimeError(f"BCPD exited {proc.returncode}; see log")
 
-    # parse trajectory
-    frames: List[np.ndarray] = []
-    for fname in (".optpath.bin", "optpath.bin"):
-        p = ws / fname
-        if p.exists():
-            frames = _read_optpath(p)
-            break
+    # # parse trajectory
+    # frames: List[np.ndarray] = []
+    # for fname in (".optpath.bin", "optpath.bin"):
+    #     p = ws / fname
+    #     if p.exists():
+    #         frames = _read_optpath(p)
+    #         break
 
     # load final registered cloud
     for cand in ("output_y.txt", "y.txt", "Y.txt", "output_x.txt", "x.txt", "X.txt"):
