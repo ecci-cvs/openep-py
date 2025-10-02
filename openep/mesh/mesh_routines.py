@@ -814,7 +814,9 @@ def bcpd_register(
     work_dir: Optional[Union[str, Path]] = None,
     temp_dir_name: Optional[str] = None,
     log_file: Union[str, Path] = "bcpd.log",
-    on_stdout: Optional[Callable[[str], None]] = None,    
+    on_stdout: Optional[Callable[[str], None]] = None,
+    overwrite_temp_dir: bool = False,
+    save_trajectory: bool = False,
     visualise: bool = False,
     keep_files: bool = False,
     strict_flags: bool = False,
@@ -843,6 +845,12 @@ def bcpd_register(
         appended here (with carriage-return progress translated to newlines) when supplied.
     on_stdout : Callable[[str], None], optional
         If provided, called with each logical line of BCPD stdout as it arrives. Useful for GUI live updates.
+    overwrite_temp_dir : bool
+        When ``True`` and ``temp_dir_name`` exists, delete it before starting. When ``False`` (default),
+        an existing directory raises ``FileExistsError`` to avoid accidental reuse.
+    save_trajectory : bool
+        If ``True`` and no ``-s`` flag is present in ``bcpd_args``, append ``-sY`` so that BCPD writes
+        the optimization trajectory (``.optpath.bin``) in the workspace.
     visualise : bool
         If True, launch vedo-based interactive viewer.
     keep_files : bool
@@ -890,7 +898,12 @@ def bcpd_register(
     if temp_dir_name is not None:
         parent = Path(work_dir) if work_dir is not None else Path(tempfile.gettempdir())
         ws = parent / temp_dir_name
-        # Avoid accidental reuse of a prior run's files
+        # Handle pre-existing dirs
+        if ws.exists():
+            if overwrite_temp_dir:
+                shutil.rmtree(ws, ignore_errors=True)
+            else:
+                raise FileExistsError(f"Workspace already exists: {ws}")
         ws.mkdir(parents=True, exist_ok=False)
     else:
         ws = Path(tempfile.mkdtemp(dir=work_dir))
@@ -909,6 +922,7 @@ def bcpd_register(
         log_path.parent.mkdir(parents=True, exist_ok=True)
         # line-buffered text file for live tailing
         log_fp = open(log_path, "a", encoding="utf-8")
+        print(f"Logging BCPD output to {log_path}")
 
     # build command
     cmd = [str(bcpd_path), "-x", str(tgt_txt), "-y", str(src_txt)]
@@ -920,7 +934,11 @@ def bcpd_register(
             cmd.append(f"-s{val}")
         else:
             cmd.extend([f"-{flag}", str(val)])
-    print("Running: %s", " ".join(shlex.quote(c) for c in cmd))
+    # Ensure trajectory saving if requested and not already specified
+    if save_trajectory and not any(arg.startswith("-s") for arg in cmd):
+        cmd.append("-sY")
+        
+    print(f"Running: {' '.join(shlex.quote(c) for c in cmd)}")
 
     # execute BCPD
     proc = subprocess.Popen(
