@@ -812,13 +812,8 @@ def bcpd_register(
     bcpd_path: Union[str, Path] = "bcpd",
     bcpd_args: Dict[str, Union[str, int, float]],
     work_dir: Optional[Union[str, Path]] = None,
-    temp_dir_name: Optional[str] = None,
-    log_file: Union[str, Path] = "bcpd.log",
     on_stdout: Optional[Callable[[str], None]] = None,
-    save_trajectory: bool = False,
-    save_matched: bool = False,
-    visualise: bool = False,
-    keep_files: bool = False,
+    keep_files: bool = True,
     strict_flags: bool = False,
 ) -> Tuple[np.ndarray, Dict[str, Union[str, float]]]:
     """
@@ -834,23 +829,11 @@ def bcpd_register(
         Path to the BCPD executable.
     bcpd_args : dict
         Keyword → value for BCPD flags (e.g. {"beta":2,"lam":10,"outlier":0.1,"s":"Y"}).
-    work_dir : str or Path, optional
-        Parent directory for a temporary workspace.
-    temp_dir_name : str, optional
-        If provided, use ``Path(work_dir or tempfile.gettempdir()) / temp_dir_name`` as the workspace.
-        If it already exists, it will be **deleted** before starting to ensure a clean run.
-    log_file : str or Path
-        The log filename. Regardless of whether an absolute path is supplied, logs are written
-        **inside the workspace** (the basename is used) so all run artifacts live together.
+    work_dir : str or Path
+        Workspace directory. All files (inputs/outputs) are placed here.
+        If the directory exists, it will be removed before the run to ensure a clean workspace.
     on_stdout : Callable[[str], None], optional
         If provided, called with each logical line from BCPD stdout (CR- or LF-terminated).
-    save_trajectory : bool
-        If True and no ``-s`` flag is present in ``bcpd_args``, append ``-sY`` to have BCPD write
-        ``.optpath.bin`` to the workspace.
-    save_matched : bool
-        If True and BCPD emits a matched-points/indices file, save a canonical copy as ``e.txt`` in the workspace.
-    visualise : bool
-        If True, launch vedo-based interactive viewer.
     keep_files : bool
         If True, do not delete the workspace on exit.
     strict_flags : bool
@@ -892,32 +875,25 @@ def bcpd_register(
             if key != "outlier" and v <= 0:
                 raise ValueError(f"{key} must be positive")
 
-    # make workspace (clean if named and exists)
-    if temp_dir_name:
-        parent = Path(work_dir) if work_dir is not None else Path(tempfile.gettempdir())
-        ws = parent / temp_dir_name
-        if ws.exists():
-            shutil.rmtree(ws, ignore_errors=True)
-        ws.mkdir(parents=True, exist_ok=True)
-    else:
-        ws = Path(tempfile.mkdtemp(dir=work_dir))
+    # make workspace: use work_dir directly and clean if it already exists
+    if work_dir is None:
+        raise ValueError("work_dir must be provided and will be used as the workspace")
+    ws = Path(work_dir)
+    if ws.exists():
+        shutil.rmtree(ws, ignore_errors=True)
+    ws.mkdir(parents=True, exist_ok=True)
     src_txt = ws / "source.txt"
     tgt_txt = ws / "target.txt"
     np.savetxt(src_txt, source_pts, fmt="%.8f")
     np.savetxt(tgt_txt, target_pts, fmt="%.8f")
 
     # setup logging: always place inside workspace
-    log_basename = Path(log_file).name if log_file else "bcpd.log"
+    log_basename = "bcpd.log"
     log_path = ws / log_basename
     log_fp = open(log_path, "a", encoding="utf-8")
 
     # build command
     cmd = [str(bcpd_path), "-x", str(tgt_txt), "-y", str(src_txt)]
-    
-    # optionally force saving of trajectory if not set by caller
-    if save_trajectory and ("s" not in bcpd_args):
-        bcpd_args = dict(bcpd_args)  # shallow copy
-        bcpd_args["s"] = "Y"
 
     for key, val in bcpd_args.items():
         flag = _FLAG_ALIASES.get(key, key)
@@ -929,7 +905,8 @@ def bcpd_register(
             cmd.extend([f"-{flag}", str(val)])
 
     print(f"Running: {' '.join(shlex.quote(c) for c in cmd)}")
-
+    print(f"Workspace: {ws}")
+    
     # execute BCPD
     proc = subprocess.Popen(
         cmd, cwd=ws, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
@@ -973,25 +950,14 @@ def bcpd_register(
     if proc.returncode != 0:
         raise RuntimeError(f"BCPD exited {proc.returncode}; see log")
 
-    # # parse trajectory
-    # frames: List[np.ndarray] = []
-    # for fname in (".optpath.bin", "optpath.bin"):
-    #     p = ws / fname
-    #     if p.exists():
-    #         frames = _read_optpath(p)
-    #         break
-
     # load final registered cloud
-    #TODO: test file paths
-    for cand in ("output_y.txt", "y.txt", "Y.txt", "output_x.txt", "x.txt", "X.txt"):
+    #TODO: clean up file paths
+    for cand in ("output_y.txt", "y.txt", "Y.txt"):
         if (ws / cand).exists():
             registered_pts = np.loadtxt(ws / cand)
             break
     else:
         raise FileNotFoundError("No registered output file found in workspace")
-
-    # Always persist a canonical deformed shape inside workspace
-    np.savetxt(ws / "y.txt", registered_pts, fmt="%.8f")
 
     # parse params if present
     params: Dict[str, Union[str, float]] = {}
@@ -1001,23 +967,6 @@ def bcpd_register(
             if "=" in ln:
                 k, v = map(str.strip, ln.split("=", 1))
                 params[k] = float(v) if v.replace(".", "", 1).isdigit() else v
-
-    # # visualize if requested
-    # if visualise:
-    #     _visualise_vedo(source_pts, source_cells, target_pts, target_cells, registered_pts, frames or None)
-
-    # Optionally capture matched points/indices to a canonical file
-    #TODO: test file paths
-    if save_matched:
-        for ecand in ("e.txt", "E.txt"):
-            ep = ws / ecand
-            if ep.exists():
-                try:
-                    e = np.loadtxt(ep)
-                    np.savetxt(ws / "e.txt", e, fmt="%.8f")
-                except Exception:
-                    pass
-                break
 
     # cleanup
     if not keep_files:
