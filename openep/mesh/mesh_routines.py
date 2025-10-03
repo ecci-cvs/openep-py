@@ -775,6 +775,136 @@ def mean_field_per_region(mesh, field, cell_region):
 
     return mean_field_values
 
+# --------------------------------------------------------------------------- #
+# Pre-alignment helpers (optional, imported only if used)
+# --------------------------------------------------------------------------- #
+def _prealign_interactive_np(source_pts: np.ndarray, target_pts: np.ndarray) -> np.ndarray:
+    """
+    Launch an interactive viewer to pre-align *source_pts* to *target_pts*.
+    - Press **R** to run coarse RANSAC+ICP (Open3D), applied in place to the source.
+    - Press **A** to toggle actor edit mode (drag/rotate/scale with mouse).
+    - Close the window to continue; returns possibly modified source points.
+    """
+    try:
+        import vedo  # type: ignore
+    except Exception as e:
+        raise ImportError("vedo is required for prealign_interactive") from e
+
+    src = vedo.Mesh(source_pts.copy()).c("blue").alpha(0.8)
+    tgt = vedo.Mesh(target_pts.copy()).c("gray").alpha(0.5)
+
+    plt = vedo.Plotter(size=(900, 600), title="Pre-align: Source (blue) vs Target (gray)")
+    banner = vedo.Text2D("R: re-align  •  A: actor edit  •  close to continue", pos="top-left", c="black")
+    plt.add([tgt, src, banner])
+
+    # state for edit mode
+    state = {"editing": False}
+
+    def _toggle_edit():
+        # vedo Actor.edit() enters an interactive widget mode; calling again exits.
+        state["editing"] = not state["editing"]
+        try:
+            src.edit()  # toggles edit mode
+        except Exception:
+            # fallback to enabling dragging only
+            try:
+                src.draggable()
+            except Exception:
+                pass
+
+    def _on_key(evt):
+        if not evt.keypress:
+            return
+        k = evt.keypress.lower()
+        if k == "r":
+            vedo.printc("[prealign] running coarse registration …", c="green")
+            try:
+                _prealign_carto_mri(src, tgt)
+                vedo.printc("[prealign] done", c="cyan")
+            except Exception as ee:
+                vedo.printc(f"[prealign] failed: {ee}", c="red")
+            plt.render()
+        elif k == "a":
+            _toggle_edit()
+        # any other keys are ignored
+
+    plt.add_callback("keypress", _on_key)
+    plt.show(axes=1, interactive=True)
+    return np.asarray(src.points)
+
+
+def _prealign_carto_mri(source_mesh, target_mesh) -> np.ndarray:
+    """
+    Coarse-register a sparse 'source' shell to a dense 'target' shell using Open3D:
+      - FPFH features + RANSAC (global)
+      - Point-to-plane ICP (refinement)
+    The *source_mesh* is modified **in place** and the 4x4 transform matrix is returned.
+    """
+    try:
+        import open3d as o3d  # type: ignore
+    except Exception as e:
+        raise ImportError("open3d is required for prealign_interactive") from e
+
+    # 1) vedo.Mesh -> Open3D point cloud
+    def _to_o3d(vedo_mesh) -> "o3d.geometry.PointCloud":
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(np.asarray(vedo_mesh.points).copy())
+        pc.estimate_normals()
+        return pc
+
+    src_pc = _to_o3d(source_mesh)
+    tgt_pc = _to_o3d(target_mesh)
+
+    # 2) basic preprocess + FPFH
+    def _preprocess(pc, voxel_size: Optional[float] = None):
+        dpc = pc.voxel_down_sample(voxel_size) if voxel_size else pc
+        dpc.estimate_normals()
+        radius = (5 * voxel_size) if voxel_size else 0.3
+        fpfh = o3d.pipelines.registration.compute_fpfh_feature(
+            dpc, o3d.geometry.KDTreeSearchParamHybrid(radius=radius, max_nn=100)
+        )
+        return dpc, fpfh
+
+    voxel_size = None  # keep simple for now (can be parameterized later)
+    src_d, src_f = _preprocess(src_pc, voxel_size)
+    tgt_d, tgt_f = _preprocess(tgt_pc, voxel_size)
+
+    # 3) RANSAC global
+    ransac = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+        src_d, tgt_d, src_f, tgt_f,
+        mutual_filter=True,
+        max_correspondence_distance=10.0,
+        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
+        ransac_n=4,
+        checkers=[
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(10.0),
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+        ],
+        criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(100000, 500),
+    )
+    T_init = ransac.transformation
+
+    # 4) ICP refine (point-to-plane)
+    icp = o3d.pipelines.registration.registration_icp(
+        src_d, tgt_d,
+        max_correspondence_distance=5.0,
+        init=T_init,
+        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane(),
+        criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=80),
+    )
+    T_final = icp.transformation
+
+    # 5) apply to vedo source in place (expects 4x4 numpy)
+    try:
+        source_mesh.apply_transform(T_final)
+    except Exception:
+        # fallback: manual transform of vertices
+        P = np.asarray(source_mesh.points)
+        P_h = np.c_[P, np.ones((P.shape[0], 1))]
+        P_t = (P_h @ T_final.T)[:, :3]
+        source_mesh.points = P_t
+    return T_final
+
 def read_optpath(path: Path) -> List[np.ndarray]:
     """
     Parse BCPD’s binary trajectory file `optpath.bin` following demo/optpath.m:
@@ -815,6 +945,7 @@ def bcpd_register(
     on_stdout: Optional[Callable[[str], None]] = None,
     keep_files: bool = True,
     strict_flags: bool = False,
+    prealign_interactive: bool = False,
 ) -> Tuple[np.ndarray, Dict[str, Union[str, float]]]:
     """
     Run BCPD and return final registered points + estimated parameters.
@@ -838,7 +969,9 @@ def bcpd_register(
         If True, do not delete the workspace on exit.
     strict_flags : bool
         If True, error on unknown BCPD flags.
-
+    prealign_interactive : bool
+        If True, launch a vedo viewer to allow manual (actor edit) and on-demand coarse alignment
+        before running BCPD. Close the window to proceed.
     Returns
     -------
     registered : (M,3) array
@@ -882,6 +1015,7 @@ def bcpd_register(
     if ws.exists():
         shutil.rmtree(ws, ignore_errors=True)
     ws.mkdir(parents=True, exist_ok=True)
+
     src_txt = ws / "source.txt"
     tgt_txt = ws / "target.txt"
     np.savetxt(src_txt, source_pts, fmt="%.8f")
@@ -891,6 +1025,14 @@ def bcpd_register(
     log_basename = "bcpd.log"
     log_path = ws / log_basename
     log_fp = open(log_path, "a", encoding="utf-8")
+
+    # --- optional interactive pre-alignment --------------------------------
+    if prealign_interactive:
+        try:
+            source_pts = _prealign_interactive_np(source_pts, target_pts)
+        except ImportError as e:
+            log_fp.write(f"[prealign] skipped: {e}\\n")
+            log_fp.flush()
 
     # build command
     cmd = [str(bcpd_path), "-x", str(tgt_txt), "-y", str(src_txt)]
@@ -944,6 +1086,7 @@ def bcpd_register(
             log_fp.flush()
         else:
             print(rec)
+    
     proc.wait()
     if log_fp is not None:
         log_fp.close()
