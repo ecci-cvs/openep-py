@@ -66,7 +66,8 @@ Calculating mesh properties on a per-region basis
 """
 
 from attr import attrs
-from typing import Union, Optional
+from typing import Callable, Dict, Union, Optional, List, Tuple
+from pathlib import Path
 
 import numpy as np
 import scipy.stats
@@ -74,6 +75,7 @@ import scipy.stats
 import pyvista
 import pymeshfix
 import trimesh
+import vedo
 
 __all__ = [
     "get_free_boundaries",
@@ -86,6 +88,7 @@ __all__ = [
     "voxelise",
     "low_field_area_per_region",
     "mean_field_per_region",
+    "read_bcpd_optpath"
 ]
 
 
@@ -772,3 +775,388 @@ def mean_field_per_region(mesh, field, cell_region):
         mean_field_values[index] = np.nanmean(field[region_mask])
 
     return mean_field_values
+
+# --------------------------------------------------------------------------- #
+# Pre-alignment helpers (optional, imported only if used)
+# --------------------------------------------------------------------------- #
+def _prealign_interactive_np(source_mesh, target_mesh, voxel_size) -> np.ndarray:
+    """
+    Launch an interactive viewer to pre-align *source_mesh* to *target_mesh* (vedo.Mesh).
+    - Press **r** to run coarse RANSAC+ICP (Open3D), applied in place to the source.
+    - Press **a** to toggle manual/auto status text (no change to VTK default 'a').
+    - Close the window to continue; returns possibly modified source points as (M,3) array.
+    Parameters
+    ----------
+    source_mesh : vedo.Mesh
+        Moving/source mesh. Modified in-place by manual edits or auto pre-align.
+    target_mesh : vedo.Mesh
+        Fixed/target mesh (displayed as gray).
+    voxel_size : float
+        Approximate voxel size of the meshes, in mm. Used to set parameters for
+        coarse registration.
+    Returns
+    -------
+    np.ndarray
+        Current source vertex positions after the window is closed.
+    """
+    try:
+        import vedo  # type: ignore
+    except Exception as e:
+        raise ImportError("vedo is required for prealign_interactive") from e
+
+    # Style the provided meshes directly; operate in-place
+    src = source_mesh.c("blue").alpha(0.8)
+    tgt = target_mesh.c("gray").alpha(0.5)
+
+    plt = vedo.Plotter(size=(900, 600), title="Pre-align: Source (blue) vs Target (gray)")
+    banner = vedo.Text2D(f"r: auto re-align  •  a: toggle manual align  •  close to continue\n",
+                         pos="top-left", c="black")
+    banner2 = vedo.Text2D(f"Coarse-register using:\n"
+                           f"FPFH features + RANSAC (global) using voxel size = {voxel_size}mm\n"
+                           f"Point-to-plane ICP (refinement)",
+                           pos="bottom-right", s=0.5, c="black")
+    # status label (bottom-left), updated when toggling manual edit
+    status = vedo.Text2D("", pos="bottom-left", c="gray")
+    plt.add([tgt, src, banner, banner2, status])
+
+
+    # state for edit mode
+    state = {"editing": False}
+
+    def _update_status():
+        if state["editing"]:
+            try:
+                status.text(
+                    "Mode: Manual\n"
+                    "• left-drag = rotate (hold Ctrl for screen-plane rotate)\n"
+                    "• Shift + left-drag = translate\n"
+                    "• right-drag = scale"
+                )
+                status.color("tomato")  # stands out a bit
+            except Exception:
+                pass
+        else:
+            try:
+                status.text(
+                    "Mode: Auto"
+                )
+                status.color("gray")
+            except Exception:
+                pass
+
+    def _on_key(evt):
+        k = evt.keypress
+        if k == "r":
+            vedo.printc("[prealign] running coarse registration …", c="green")
+            try:
+                _prealign_carto_mri(src, tgt, voxel_size)
+                vedo.printc("[prealign] done", c="cyan")
+            except Exception as ee:
+                vedo.printc(f"[prealign] failed: {ee}", c="red")
+            plt.render()
+        elif k == "a":
+            state["editing"] = not state["editing"]
+            _update_status()
+            plt.render()
+        # any other keys are ignored
+
+    plt.add_callback("keypress", _on_key)
+    _update_status()
+    plt.show(axes=0, interactive=True)
+    return src.points()
+
+
+def _prealign_carto_mri(source_mesh, target_mesh, voxel_size: Optional[float] = None) -> np.ndarray:
+    """
+    Coarse-register a sparse 'source' shell to a dense 'target' shell using Open3D:
+      - FPFH features + RANSAC (global)
+      - Point-to-plane ICP (refinement)
+    The *source_mesh* is modified **in place** and the 4x4 transform matrix is returned.
+    """
+    try:
+        import open3d as o3d  # type: ignore
+    except Exception as e:
+        raise ImportError("open3d is required for prealign_interactive") from e
+
+    # 1) vedo.Mesh -> Open3D point cloud
+    def _to_o3d(vedo_mesh) -> "o3d.geometry.PointCloud":
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(np.asarray(vedo_mesh.points(), dtype=float).copy())
+        pc.estimate_normals()
+        return pc
+
+    src_pc = _to_o3d(source_mesh)
+    tgt_pc = _to_o3d(target_mesh)
+
+    # 2) basic preprocess + FPFH
+    def _preprocess(pc, voxel_size: Optional[float] = None):
+        dpc = pc.voxel_down_sample(voxel_size) if voxel_size else pc
+        dpc.estimate_normals()
+        radius = (5 * voxel_size) if voxel_size else 0.3
+        fpfh = o3d.pipelines.registration.compute_fpfh_feature(
+            dpc, o3d.geometry.KDTreeSearchParamHybrid(radius=radius, max_nn=100)
+        )
+        return dpc, fpfh
+
+    src_d, src_f = _preprocess(src_pc, voxel_size)
+    tgt_d, tgt_f = _preprocess(tgt_pc, voxel_size)
+
+    # 3) RANSAC global
+    ransac = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+        src_d, tgt_d, src_f, tgt_f,
+        mutual_filter=True,
+        max_correspondence_distance=10.0,
+        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
+        ransac_n=4,
+        checkers=[
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(10.0),
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+        ],
+        criteria=o3d.pipelines.registration.RANSACConvergenceCriteria(100000, 500),
+    )
+    T_init = ransac.transformation
+
+    # 4) ICP refine (point-to-plane)
+    icp = o3d.pipelines.registration.registration_icp(
+        src_d, tgt_d,
+        max_correspondence_distance=5.0,
+        init=T_init,
+        estimation_method=o3d.pipelines.registration.TransformationEstimationPointToPlane(),
+        criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=80),
+    )
+    T_final = icp.transformation
+
+    # 5) apply to vedo source in place (expects 4x4 numpy)
+    try:
+        source_mesh.apply_transform(T_final)
+    except Exception:
+        # fallback: manual transform of vertices
+        P = np.asarray(source_mesh.points(), dtype=float)
+        P_h = np.c_[P, np.ones((P.shape[0], 1))]
+        P_t = (P_h @ T_final.T)[:, :3]
+        source_mesh.points(P_t)
+    return T_final
+
+def read_optpath(path: Path) -> List[np.ndarray]:
+    """
+    Parse BCPD’s binary trajectory file `optpath.bin` following demo/optpath.m:
+
+    int32 N          # number of target points (unused here)
+    int32 D          # spatial dimension (2 or 3)
+    int32 M          # number of source points
+    int32 L          # number of saved iterations
+    double T[D*M*L]  # trajectory of source: Y(:)
+    double X[D*N]    # final target cloud (skipped)
+
+    Returns
+    -------
+    frames : list of (M, D) float64 arrays, one per iteration
+    """
+    with open(path, "rb") as f:
+        header = np.fromfile(f, dtype=np.int32, count=4)
+        if header.size < 4:
+            raise ValueError(f"{path} is too short for optpath header")
+        _, D, M, L = header
+        count = int(D) * int(M) * int(L)
+        T = np.fromfile(f, dtype=np.float64, count=count)
+        # skip the final target cloud: D * N doubles
+        # np.fromfile(f, dtype=np.float64, count=D*header[0])
+    if T.size != count:
+        raise ValueError(f"Unexpected trajectory length in {path}")
+    # reshape in Fortran order to match MATLAB's [D x M x L]
+    T = T.reshape((D, M, L), order="F")
+    return [T[:, :, k].T for k in range(L)]
+
+def bcpd_register(
+    source_mesh,
+    target_mesh,
+    *,
+    bcpd_path: Union[str, Path] = "bcpd",
+    bcpd_args: Dict[str, Union[str, int, float]],
+    work_dir: Optional[Union[str, Path]] = None,
+    on_stdout: Optional[Callable[[str], None]] = None,
+    keep_files: bool = True,
+    strict_flags: bool = False,
+    prealign_interactive: bool = False,
+) -> Tuple[np.ndarray, Dict[str, Union[str, float]]]:
+    """
+    Run BCPD and return final registered points + estimated parameters.
+
+    Parameters
+    ----------
+    source_mesh : vedo.Mesh or pyvista.PolyData
+        Moving/source mesh; its points will be written to BCPD input.
+    target_mesh : vedo.Mesh or pyvista.PolyData
+        Fixed/target mesh; its points will be written to BCPD input.
+    bcpd_path : str or Path
+        Path to the BCPD executable.
+    bcpd_args : dict
+        Keyword → value for BCPD flags (e.g. {"beta":2,"lam":10,"outlier":0.1,"s":"Y"}).
+    work_dir : str or Path
+        Workspace directory. All files (inputs/outputs) are placed here.
+        If the directory exists, it will be removed before the run to ensure a clean workspace.
+    on_stdout : Callable[[str], None], optional
+        If provided, called with each logical line from BCPD stdout (CR- or LF-terminated).
+    keep_files : bool
+        If True, do not delete the workspace on exit.
+    strict_flags : bool
+        If True, error on unknown BCPD flags.
+    prealign_interactive : bool
+        If True, launch a vedo viewer to allow manual/auto pre-alignment before running BCPD.
+        Close the window to proceed.
+    Returns
+    -------
+    registered : (M,3) array
+        The final deformed source cloud ("y").
+    params : dict
+        Key → value from `bcpd.param` (if produced).
+    """
+    import shutil
+    import shlex
+    import tempfile
+    import subprocess
+
+    # if mesh is pyvista.PolyData
+    if isinstance(source_mesh, pyvista.PolyData):
+        source_mesh = vedo.Mesh(source_mesh)
+    if isinstance(target_mesh, pyvista.PolyData):
+        target_mesh = vedo.Mesh(target_mesh)
+
+    # Extract raw point clouds from vedo meshes
+    source_pts = source_mesh.points()
+    target_pts = target_mesh.points()
+
+    _FLAG_ALIASES: Dict[str, str] = {
+        "beta": "b",
+        "lam": "l",
+        "outlier": "w",
+        "kappa": "k",
+        "gamma": "g",
+        "kernel_id": "G",  # 0=Gauss,1=IMQ,2=RatQuad,3=Laplace
+        # 's' passed verbatim e.g. "-sY"
+    }
+
+    # validate shapes
+    for name, arr in (("source_pts", source_pts), ("target_pts", target_pts)):
+        if arr.ndim != 2 or arr.shape[1] != 3:
+            raise ValueError(f"{name} must be (N,3)")
+
+    # numeric sanity
+    for key in ("beta", "lam", "kappa", "gamma", "outlier"):
+        if key in bcpd_args:
+            v = float(bcpd_args[key])
+            if key == "outlier" and not (0 < v < 1):
+                raise ValueError("outlier must be in (0,1)")
+            if key != "outlier" and v <= 0:
+                raise ValueError(f"{key} must be positive")
+
+    # make workspace: use work_dir directly and clean if it already exists
+    if work_dir is None:
+        raise ValueError("work_dir must be provided and will be used as the workspace")
+    ws = Path(work_dir)
+    if ws.exists():
+        shutil.rmtree(ws, ignore_errors=True)
+    ws.mkdir(parents=True, exist_ok=True)
+
+    src_txt = ws / "source.txt"
+    tgt_txt = ws / "target.txt"
+    np.savetxt(src_txt, source_pts, fmt="%.8f")
+    np.savetxt(tgt_txt, target_pts, fmt="%.8f")
+
+    # setup logging: always place inside workspace
+    log_basename = "bcpd.log"
+    log_path = ws / log_basename
+    log_fp = open(log_path, "a", encoding="utf-8")
+
+    # --- optional interactive pre-alignment --------------------------------
+    if prealign_interactive:
+        try:
+            source_pts = _prealign_interactive_np(source_mesh, target_mesh, voxel_size=3.0)
+            source_mesh.points(source_pts)
+        except ImportError as e:
+            log_fp.write(f"[prealign] skipped: {e}\\n")
+            log_fp.flush()
+
+    # build command
+    cmd = [str(bcpd_path), "-x", str(tgt_txt), "-y", str(src_txt)]
+
+    for key, val in bcpd_args.items():
+        flag = _FLAG_ALIASES.get(key, key)
+        if strict_flags and len(flag) > 1 and flag not in _FLAG_ALIASES.values():
+            raise ValueError(f"Unknown BCPD option '{key}'")
+        if flag == "s" and isinstance(val, str):
+            cmd.append(f"-s{val}")
+        else:
+            cmd.extend([f"-{flag}", str(val)])
+
+    print(f"Running: {' '.join(shlex.quote(c) for c in cmd)}")
+    print(f"Workspace: {ws}")
+    
+    # execute BCPD
+    proc = subprocess.Popen(
+        cmd, cwd=ws, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    )
+    assert proc.stdout
+
+    def _iter_records(stream):
+        """Yield logical records from a text stream, splitting on CR or LF.
+        Many CLIs print progress with carriage returns ("\r"). We treat both
+        "\r" and "\n" as record separators so GUIs/logs can show incremental lines.
+        """
+        buf: List[str] = []
+        while True:
+            ch = stream.read(1)
+            if ch == "" or ch is None:
+                break
+            if ch in ("\r", "\n"):
+                if buf:
+                    yield "".join(buf)
+                buf.clear()
+                continue
+            buf.append(ch)
+        if buf:
+            yield "".join(buf)
+
+    for rec in _iter_records(proc.stdout):
+        if on_stdout is not None:
+            try:
+                on_stdout(rec)
+            except Exception:
+                # do not break the run if UI callback fails
+                pass
+        if log_fp is not None:
+            log_fp.write(rec + "\n")
+            log_fp.flush()
+        else:
+            print(rec)
+    
+    proc.wait()
+    if log_fp is not None:
+        log_fp.close()
+    if proc.returncode != 0:
+        raise RuntimeError(f"BCPD exited {proc.returncode}; see log")
+
+    # load final registered cloud
+    #TODO: clean up file paths
+    for cand in ("output_y.txt", "y.txt", "Y.txt"):
+        if (ws / cand).exists():
+            registered_pts = np.loadtxt(ws / cand)
+            break
+    else:
+        raise FileNotFoundError("No registered output file found in workspace")
+
+    # parse params if present
+    params: Dict[str, Union[str, float]] = {}
+    pfile = ws / "bcpd.param"
+    if pfile.exists():
+        for ln in pfile.read_text().splitlines():
+            if "=" in ln:
+                k, v = map(str.strip, ln.split("=", 1))
+                params[k] = float(v) if v.replace(".", "", 1).isdigit() else v
+
+    # cleanup
+    if not keep_files:
+        shutil.rmtree(ws, ignore_errors=True)
+        print("Removed workspace %s", ws)
+
+    return registered_pts, params
