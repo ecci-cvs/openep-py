@@ -75,6 +75,7 @@ import scipy.stats
 import pyvista
 import pymeshfix
 import trimesh
+import vedo
 
 __all__ = [
     "get_free_boundaries",
@@ -778,7 +779,7 @@ def mean_field_per_region(mesh, field, cell_region):
 # --------------------------------------------------------------------------- #
 # Pre-alignment helpers (optional, imported only if used)
 # --------------------------------------------------------------------------- #
-def _prealign_interactive_np(source_pts: np.ndarray, target_pts: np.ndarray) -> np.ndarray:
+def _prealign_interactive_np(source_pts: np.ndarray, target_pts: np.ndarray, source_faces: np.ndarray, target_faces: np.ndarray) -> np.ndarray:
     """
     Launch an interactive viewer to pre-align *source_pts* to *target_pts*.
     - Press **R** to run coarse RANSAC+ICP (Open3D), applied in place to the source.
@@ -790,32 +791,65 @@ def _prealign_interactive_np(source_pts: np.ndarray, target_pts: np.ndarray) -> 
     except Exception as e:
         raise ImportError("vedo is required for prealign_interactive") from e
 
-    src = vedo.Mesh(source_pts.copy()).c("blue").alpha(0.8)
-    tgt = vedo.Mesh(target_pts.copy()).c("gray").alpha(0.5)
+    # vedo expects a single argument [points, faces], where faces are tri or quad.
+    # Coerce to friendly dtypes and validate faces shape.
+    spts = np.asarray(source_pts, dtype=float, order="C").copy()
+    tpts = np.asarray(target_pts, dtype=float, order="C").copy()
+    sfaces = np.asarray(source_faces, dtype=np.int32, order="C").copy()
+    tfaces = np.asarray(target_faces, dtype=np.int32, order="C").copy()
+
+    def _check_faces(f: np.ndarray, name: str) -> None:
+        if f.ndim != 2 or f.shape[1] not in (3, 4):
+            raise ValueError(
+                f"{name}: faces must be an (F,3) or (F,4) integer array of "
+                "triangle/quad indices"
+            )
+        if f.min() < 0:
+            raise ValueError(f"{name}: faces contain negative indices")
+        npts = spts.shape[0] if name == "source_faces" else tpts.shape[0]
+        if f.max() >= npts:
+            raise ValueError(f"{name}: faces contain indices >= number of points")
+
+    _check_faces(sfaces, "source_faces")
+    _check_faces(tfaces, "target_faces")
+
+    src = vedo.Mesh([spts, sfaces]).c("blue").alpha(0.8)
+    tgt = vedo.Mesh([tpts, tfaces]).c("gray").alpha(0.5)
 
     plt = vedo.Plotter(size=(900, 600), title="Pre-align: Source (blue) vs Target (gray)")
-    banner = vedo.Text2D("R: re-align  •  A: actor edit  •  close to continue", pos="top-left", c="black")
-    plt.add([tgt, src, banner])
+    banner = vedo.Text2D("r: auto re-align  •  a: toggle manual align  •  close to continue",
+                         pos="top-left", c="black")
+    # status label (bottom-left), updated when toggling manual edit
+    status = vedo.Text2D("", pos="bottom-left", c="gray")
+    plt.add([tgt, src, banner, status])
+
 
     # state for edit mode
     state = {"editing": False}
 
-    def _toggle_edit():
-        # vedo Actor.edit() enters an interactive widget mode; calling again exits.
-        state["editing"] = not state["editing"]
-        try:
-            src.edit()  # toggles edit mode
-        except Exception:
-            # fallback to enabling dragging only
+    def _update_status():
+        if state["editing"]:
             try:
-                src.draggable()
+                status.text(
+                    "Mode: Manual\n"
+                    "• left-drag = rotate (hold Ctrl for screen-plane rotate)\n"
+                    "• Shift + left-drag = translate\n"
+                    "• right-drag = scale"
+                )
+                status.color("tomato")  # stands out a bit
+            except Exception:
+                pass
+        else:
+            try:
+                status.text(
+                    "Mode: Auto"
+                )
+                status.color("gray")
             except Exception:
                 pass
 
     def _on_key(evt):
-        if not evt.keypress:
-            return
-        k = evt.keypress.lower()
+        k = evt.keypress
         if k == "r":
             vedo.printc("[prealign] running coarse registration …", c="green")
             try:
@@ -825,12 +859,15 @@ def _prealign_interactive_np(source_pts: np.ndarray, target_pts: np.ndarray) -> 
                 vedo.printc(f"[prealign] failed: {ee}", c="red")
             plt.render()
         elif k == "a":
-            _toggle_edit()
+            state["editing"] = not state["editing"]
+            _update_status()
+            plt.render()
         # any other keys are ignored
 
     plt.add_callback("keypress", _on_key)
+    _update_status()
     plt.show(axes=1, interactive=True)
-    return np.asarray(src.points)
+    return np.asarray(src.points())
 
 
 def _prealign_carto_mri(source_mesh, target_mesh) -> np.ndarray:
@@ -848,7 +885,7 @@ def _prealign_carto_mri(source_mesh, target_mesh) -> np.ndarray:
     # 1) vedo.Mesh -> Open3D point cloud
     def _to_o3d(vedo_mesh) -> "o3d.geometry.PointCloud":
         pc = o3d.geometry.PointCloud()
-        pc.points = o3d.utility.Vector3dVector(np.asarray(vedo_mesh.points).copy())
+        pc.points = o3d.utility.Vector3dVector(np.asarray(vedo_mesh.points(), dtype=float).copy())
         pc.estimate_normals()
         return pc
 
@@ -899,10 +936,10 @@ def _prealign_carto_mri(source_mesh, target_mesh) -> np.ndarray:
         source_mesh.apply_transform(T_final)
     except Exception:
         # fallback: manual transform of vertices
-        P = np.asarray(source_mesh.points)
+        P = np.asarray(source_mesh.points(), dtype=float)
         P_h = np.c_[P, np.ones((P.shape[0], 1))]
         P_t = (P_h @ T_final.T)[:, :3]
-        source_mesh.points = P_t
+        source_mesh.points(P_t)
     return T_final
 
 def read_optpath(path: Path) -> List[np.ndarray]:
@@ -939,6 +976,8 @@ def bcpd_register(
     source_pts: np.ndarray,
     target_pts: np.ndarray,
     *,
+    source_faces: Optional[np.ndarray] = None,
+    target_faces: Optional[np.ndarray] = None,
     bcpd_path: Union[str, Path] = "bcpd",
     bcpd_args: Dict[str, Union[str, int, float]],
     work_dir: Optional[Union[str, Path]] = None,
@@ -1029,7 +1068,7 @@ def bcpd_register(
     # --- optional interactive pre-alignment --------------------------------
     if prealign_interactive:
         try:
-            source_pts = _prealign_interactive_np(source_pts, target_pts)
+            source_pts = _prealign_interactive_np(source_pts, target_pts, source_faces, target_faces)
         except ImportError as e:
             log_fp.write(f"[prealign] skipped: {e}\\n")
             log_fp.flush()
