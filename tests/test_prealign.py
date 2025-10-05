@@ -79,7 +79,7 @@ def main() -> None:
 
     # 4) Launch the pre-align viewer (blocks until window closed)
     try:
-        adjusted_pts = _prealign_interactive_np(source_mesh, target_mesh)
+        adjusted_pts = _prealign_interactive_np(source_mesh, target_mesh, voxel_size=3.0)
     except ImportError as e:
         print("ERROR: This test requires 'vedo' (and 'open3d' if you press R).")
         raise

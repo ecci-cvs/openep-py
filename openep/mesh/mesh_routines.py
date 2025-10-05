@@ -779,7 +779,7 @@ def mean_field_per_region(mesh, field, cell_region):
 # --------------------------------------------------------------------------- #
 # Pre-alignment helpers (optional, imported only if used)
 # --------------------------------------------------------------------------- #
-def _prealign_interactive_np(source_mesh, target_mesh) -> np.ndarray:
+def _prealign_interactive_np(source_mesh, target_mesh, voxel_size) -> np.ndarray:
     """
     Launch an interactive viewer to pre-align *source_mesh* to *target_mesh* (vedo.Mesh).
     - Press **r** to run coarse RANSAC+ICP (Open3D), applied in place to the source.
@@ -791,6 +791,9 @@ def _prealign_interactive_np(source_mesh, target_mesh) -> np.ndarray:
         Moving/source mesh. Modified in-place by manual edits or auto pre-align.
     target_mesh : vedo.Mesh
         Fixed/target mesh (displayed as gray).
+    voxel_size : float
+        Approximate voxel size of the meshes, in mm. Used to set parameters for
+        coarse registration.
     Returns
     -------
     np.ndarray
@@ -806,11 +809,15 @@ def _prealign_interactive_np(source_mesh, target_mesh) -> np.ndarray:
     tgt = target_mesh.c("gray").alpha(0.5)
 
     plt = vedo.Plotter(size=(900, 600), title="Pre-align: Source (blue) vs Target (gray)")
-    banner = vedo.Text2D("r: auto re-align  •  a: toggle manual align  •  close to continue",
+    banner = vedo.Text2D(f"r: auto re-align  •  a: toggle manual align  •  close to continue\n",
                          pos="top-left", c="black")
+    banner2 = vedo.Text2D(f"Coarse-register using:\n"
+                           f"FPFH features + RANSAC (global) using voxel size = {voxel_size}mm\n"
+                           f"Point-to-plane ICP (refinement)",
+                           pos="bottom-right", s=0.5, c="black")
     # status label (bottom-left), updated when toggling manual edit
     status = vedo.Text2D("", pos="bottom-left", c="gray")
-    plt.add([tgt, src, banner, status])
+    plt.add([tgt, src, banner, banner2, status])
 
 
     # state for edit mode
@@ -842,7 +849,7 @@ def _prealign_interactive_np(source_mesh, target_mesh) -> np.ndarray:
         if k == "r":
             vedo.printc("[prealign] running coarse registration …", c="green")
             try:
-                _prealign_carto_mri(src, tgt)
+                _prealign_carto_mri(src, tgt, voxel_size)
                 vedo.printc("[prealign] done", c="cyan")
             except Exception as ee:
                 vedo.printc(f"[prealign] failed: {ee}", c="red")
@@ -855,11 +862,11 @@ def _prealign_interactive_np(source_mesh, target_mesh) -> np.ndarray:
 
     plt.add_callback("keypress", _on_key)
     _update_status()
-    plt.show(axes=1, interactive=True)
-    return np.asarray(src.points())
+    plt.show(axes=0, interactive=True)
+    return src.points()
 
 
-def _prealign_carto_mri(source_mesh, target_mesh) -> np.ndarray:
+def _prealign_carto_mri(source_mesh, target_mesh, voxel_size: Optional[float] = None) -> np.ndarray:
     """
     Coarse-register a sparse 'source' shell to a dense 'target' shell using Open3D:
       - FPFH features + RANSAC (global)
@@ -891,7 +898,6 @@ def _prealign_carto_mri(source_mesh, target_mesh) -> np.ndarray:
         )
         return dpc, fpfh
 
-    voxel_size = None  # keep simple for now (can be parameterized later)
     src_d, src_f = _preprocess(src_pc, voxel_size)
     tgt_d, tgt_f = _preprocess(tgt_pc, voxel_size)
 
@@ -1017,8 +1023,8 @@ def bcpd_register(
         target_mesh = vedo.Mesh(target_mesh)
 
     # Extract raw point clouds from vedo meshes
-    source_pts = np.asarray(source_mesh.points(), dtype=float)
-    target_pts = np.asarray(target_mesh.points(), dtype=float)
+    source_pts = source_mesh.points()
+    target_pts = target_mesh.points()
 
     _FLAG_ALIASES: Dict[str, str] = {
         "beta": "b",
@@ -1065,7 +1071,7 @@ def bcpd_register(
     # --- optional interactive pre-alignment --------------------------------
     if prealign_interactive:
         try:
-            source_pts = _prealign_interactive_np(source_mesh, target_mesh)
+            source_pts = _prealign_interactive_np(source_mesh, target_mesh, voxel_size=3.0)
             source_mesh.points(source_pts)
         except ImportError as e:
             log_fp.write(f"[prealign] skipped: {e}\\n")
