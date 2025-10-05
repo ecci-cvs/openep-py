@@ -779,42 +779,31 @@ def mean_field_per_region(mesh, field, cell_region):
 # --------------------------------------------------------------------------- #
 # Pre-alignment helpers (optional, imported only if used)
 # --------------------------------------------------------------------------- #
-def _prealign_interactive_np(source_pts: np.ndarray, target_pts: np.ndarray, source_faces: np.ndarray, target_faces: np.ndarray) -> np.ndarray:
+def _prealign_interactive_np(source_mesh, target_mesh) -> np.ndarray:
     """
-    Launch an interactive viewer to pre-align *source_pts* to *target_pts*.
-    - Press **R** to run coarse RANSAC+ICP (Open3D), applied in place to the source.
-    - Press **A** to toggle actor edit mode (drag/rotate/scale with mouse).
-    - Close the window to continue; returns possibly modified source points.
+    Launch an interactive viewer to pre-align *source_mesh* to *target_mesh* (vedo.Mesh).
+    - Press **r** to run coarse RANSAC+ICP (Open3D), applied in place to the source.
+    - Press **a** to toggle manual/auto status text (no change to VTK default 'a').
+    - Close the window to continue; returns possibly modified source points as (M,3) array.
+    Parameters
+    ----------
+    source_mesh : vedo.Mesh
+        Moving/source mesh. Modified in-place by manual edits or auto pre-align.
+    target_mesh : vedo.Mesh
+        Fixed/target mesh (displayed as gray).
+    Returns
+    -------
+    np.ndarray
+        Current source vertex positions after the window is closed.
     """
     try:
         import vedo  # type: ignore
     except Exception as e:
         raise ImportError("vedo is required for prealign_interactive") from e
 
-    # vedo expects a single argument [points, faces], where faces are tri or quad.
-    # Coerce to friendly dtypes and validate faces shape.
-    spts = np.asarray(source_pts, dtype=float, order="C").copy()
-    tpts = np.asarray(target_pts, dtype=float, order="C").copy()
-    sfaces = np.asarray(source_faces, dtype=np.int32, order="C").copy()
-    tfaces = np.asarray(target_faces, dtype=np.int32, order="C").copy()
-
-    def _check_faces(f: np.ndarray, name: str) -> None:
-        if f.ndim != 2 or f.shape[1] not in (3, 4):
-            raise ValueError(
-                f"{name}: faces must be an (F,3) or (F,4) integer array of "
-                "triangle/quad indices"
-            )
-        if f.min() < 0:
-            raise ValueError(f"{name}: faces contain negative indices")
-        npts = spts.shape[0] if name == "source_faces" else tpts.shape[0]
-        if f.max() >= npts:
-            raise ValueError(f"{name}: faces contain indices >= number of points")
-
-    _check_faces(sfaces, "source_faces")
-    _check_faces(tfaces, "target_faces")
-
-    src = vedo.Mesh([spts, sfaces]).c("blue").alpha(0.8)
-    tgt = vedo.Mesh([tpts, tfaces]).c("gray").alpha(0.5)
+    # Style the provided meshes directly; operate in-place
+    src = source_mesh.c("blue").alpha(0.8)
+    tgt = target_mesh.c("gray").alpha(0.5)
 
     plt = vedo.Plotter(size=(900, 600), title="Pre-align: Source (blue) vs Target (gray)")
     banner = vedo.Text2D("r: auto re-align  •  a: toggle manual align  •  close to continue",
@@ -973,11 +962,9 @@ def read_optpath(path: Path) -> List[np.ndarray]:
     return [T[:, :, k].T for k in range(L)]
 
 def bcpd_register(
-    source_pts: np.ndarray,
-    target_pts: np.ndarray,
+    source_mesh,
+    target_mesh,
     *,
-    source_faces: Optional[np.ndarray] = None,
-    target_faces: Optional[np.ndarray] = None,
     bcpd_path: Union[str, Path] = "bcpd",
     bcpd_args: Dict[str, Union[str, int, float]],
     work_dir: Optional[Union[str, Path]] = None,
@@ -991,10 +978,10 @@ def bcpd_register(
 
     Parameters
     ----------
-    source_pts : (M,3) array
-        Moving/source point cloud.
-    target_pts : (N,3) array
-        Fixed/target point cloud.
+    source_mesh : vedo.Mesh
+        Moving/source mesh; its points will be written to BCPD input.
+    target_mesh : vedo.Mesh
+        Fixed/target mesh; its points will be written to BCPD input.
     bcpd_path : str or Path
         Path to the BCPD executable.
     bcpd_args : dict
@@ -1009,8 +996,8 @@ def bcpd_register(
     strict_flags : bool
         If True, error on unknown BCPD flags.
     prealign_interactive : bool
-        If True, launch a vedo viewer to allow manual (actor edit) and on-demand coarse alignment
-        before running BCPD. Close the window to proceed.
+        If True, launch a vedo viewer to allow manual/auto pre-alignment before running BCPD.
+        Close the window to proceed.
     Returns
     -------
     registered : (M,3) array
@@ -1022,6 +1009,10 @@ def bcpd_register(
     import shlex
     import tempfile
     import subprocess
+
+    # Extract raw point clouds from vedo meshes
+    source_pts = np.asarray(source_mesh.points(), dtype=float)
+    target_pts = np.asarray(target_mesh.points(), dtype=float)
 
     _FLAG_ALIASES: Dict[str, str] = {
         "beta": "b",
@@ -1068,7 +1059,8 @@ def bcpd_register(
     # --- optional interactive pre-alignment --------------------------------
     if prealign_interactive:
         try:
-            source_pts = _prealign_interactive_np(source_pts, target_pts, source_faces, target_faces)
+            source_pts = _prealign_interactive_np(source_mesh, target_mesh)
+            source_mesh.points(source_pts)
         except ImportError as e:
             log_fp.write(f"[prealign] skipped: {e}\\n")
             log_fp.flush()
