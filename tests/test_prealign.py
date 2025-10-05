@@ -23,7 +23,7 @@ import vedo
 
 # Import the interactive pre-align hook from the library under test.
 # This must exist in mesh_routines as per the feature request.
-from mesh_routines import _prealign_interactive_np  # type: ignore
+from openep.mesh.mesh_routines import _prealign_interactive_np  # type: ignore
 
 
 def _make_target_sphere(radius: float = 50.0) -> "vedo.Mesh":

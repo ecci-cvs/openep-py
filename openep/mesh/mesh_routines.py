@@ -978,9 +978,9 @@ def bcpd_register(
 
     Parameters
     ----------
-    source_mesh : vedo.Mesh
+    source_mesh : vedo.Mesh or pyvista.PolyData
         Moving/source mesh; its points will be written to BCPD input.
-    target_mesh : vedo.Mesh
+    target_mesh : vedo.Mesh or pyvista.PolyData
         Fixed/target mesh; its points will be written to BCPD input.
     bcpd_path : str or Path
         Path to the BCPD executable.
@@ -1009,6 +1009,12 @@ def bcpd_register(
     import shlex
     import tempfile
     import subprocess
+
+    # if mesh is pyvista.PolyData
+    if isinstance(source_mesh, pyvista.PolyData):
+        source_mesh = vedo.Mesh(source_mesh)
+    if isinstance(target_mesh, pyvista.PolyData):
+        target_mesh = vedo.Mesh(target_mesh)
 
     # Extract raw point clouds from vedo meshes
     source_pts = np.asarray(source_mesh.points(), dtype=float)
