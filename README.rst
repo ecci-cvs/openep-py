@@ -37,7 +37,7 @@ Using git
 
 Install this library from a git clone: ::
 
-    git clone https://github.com/openep/openep-py.git
+    git clone git@github.com:ecci-cvs/openep-py.git
     cd openep-py
     python3 -m pip install -e .
 
