@@ -636,9 +636,7 @@ def _add_vector_data(
         surface_data['signalMaps']['fibres'] = {
             'name': 'fibres',
             'value': vectors.fibres,
-            'propSettings': {
-                'type': 'vectors'
-            },
+            'propSettings': {},
         }
 
     if vectors.linear_connections is not None:
@@ -654,6 +652,19 @@ def _add_vector_data(
             'value': vectors.linear_connection_regions,
             'propSettings': {},
         }
+
+    # Add custom data
+    for vector_name, vector in vectors.custom.items():
+        if isinstance(vector, np.ndarray):
+            surface_data['signalMaps'][vector_name] = {
+                'name': vector_name,
+                'value': vector,
+                'propSettings': {
+                    'type': 'vector'
+                },
+            }
+        else:
+            raise ValueError(f"Only numpy arrays are supported for storing vectors data, not {type(vector)}")
 
     return surface_data
 
