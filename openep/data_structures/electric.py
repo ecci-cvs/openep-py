@@ -795,7 +795,8 @@ def extract_electric_data(electric_data):
         electric_data['electrodeNames_uni'] = np.array([])
     else:
         electric_data['egmUni'] = electric_data['egmUni'].astype(float)
-        electric_data['egmUniX'] = electric_data['egmUniX'].astype(float)
+        egmUniX = electric_data['egmUniX'].astype(float)
+        electric_data['egmUniX'] = np.expand_dims(egmUniX, axis=-1) if egmUniX.ndim == 2 else egmUniX
         electric_data['voltages']['unipolar'] = electric_data['voltages']['unipolar'].astype(float)
     if 'electrodeNames_uni' not in electric_data:
             electric_data['electrodeNames_uni'] = np.full((len(electric_data['egmUni']), 2), fill_value="", dtype=str)
