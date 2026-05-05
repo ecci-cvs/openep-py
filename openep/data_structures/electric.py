@@ -851,9 +851,14 @@ def extract_electric_data(electric_data):
     else:
         electric_data['ecgGain'] = electric_data['ecgGain'].astype(float)
 
+    # EGM for situations where [nan nan] -> [[nan], [nan]]
+    egm = electric_data['egm'].astype(float)
+    if np.all(np.isnan(egm)):
+        egm = egm.reshape(-1, 1)
+
     # Create objects to pass to Electric
     bipolar_egm = Electrogram(
-        egm=electric_data['egm'].astype(float),
+        egm=egm,
         points=electric_data['egmX'].astype(float),
         voltage=electric_data['voltages']['bipolar'].astype(float),
         gain=electric_data['egmGain'],
