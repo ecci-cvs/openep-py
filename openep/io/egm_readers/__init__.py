@@ -1,1 +1,1 @@
-from .bard_loader import BardLoaderDialog
+from egm_reader import EGMReader
