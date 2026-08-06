@@ -1,1 +1,1 @@
-from egm_reader import EGMReader
+from .egm_reader import EGMReader

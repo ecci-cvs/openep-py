@@ -464,7 +464,7 @@ class Electric:
         bipolar_egm: Electrogram = None,
         unipolar_egm: Electrogram = None,
         reference_egm: Electrogram = None,
-        ecg: np.ndarray = None,
+        ecg: ECG = None,
         impedance: Impedance = None,
         surface: ElectricSurface = None,
         annotations: Annotations = None,
