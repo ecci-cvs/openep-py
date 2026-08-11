@@ -1,4 +1,4 @@
-__all__ = ['case_routines', 'transforms']
+__all__ = ['case_routines', 'transforms', 'registration']
 
 from .case_routines import (
     get_mapping_points_within_woi,
@@ -13,3 +13,4 @@ from .case_routines import (
     bipolar_from_unipolar_surface_points,
 )
 from .transforms import Transform, MatrixTransform, DeformationFieldTransform
+from .registration import CPDRegistration
