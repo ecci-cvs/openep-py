@@ -1,4 +1,4 @@
-__all__ = ['case_routines']
+__all__ = ['case_routines', 'transforms']
 
 from .case_routines import (
     get_mapping_points_within_woi,
@@ -12,3 +12,4 @@ from .case_routines import (
     interpolate_general_cloud_points_onto_surface,
     bipolar_from_unipolar_surface_points,
 )
+from .transforms import Transform, MatrixTransform, DeformationFieldTransform
