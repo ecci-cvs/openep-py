@@ -96,6 +96,16 @@ from ..case.case_routines import (
 __all__ = []
 
 
+def _is_valid_point_set(points):
+    """Check that `points` is a genuine Nx3 array of 3D coordinates.
+
+    Some case exports store malformed placeholder data (e.g. a flat, non-Nx3 array) in
+    fields that are otherwise documented as Nx3 point coordinates (e.g. AblationForce.points).
+    """
+
+    return points is not None and points.ndim == 2 and points.shape[1] == 3
+
+
 class Case:
     """
     The fundamental OpenEP object.
@@ -175,6 +185,8 @@ class Case:
         * case.electric.unipolar_egm.points
         * case.electric.surface.nearest_point
         * case.electric.landmark_points.points
+        * case.ablation.auto_index.ablation_points.points
+        * case.ablation.force.points
 
         Args:
             translate_by (np.ndarray): 3D coordinates by which to translate the case
@@ -190,6 +202,12 @@ class Case:
         if self.electric.surface._nearest_point is not None:
             self.electric.surface._nearest_point += translate_by
 
+        if self.ablation is not None:
+            if _is_valid_point_set(self.ablation.auto_index.ablation_points._points):
+                self.ablation.auto_index.ablation_points._points += translate_by
+            if _is_valid_point_set(self.ablation.force.points):
+                self.ablation.force.points += translate_by
+
     def transform(self, transform):
         """Apply a transformation to all coordinates.
 
@@ -198,6 +216,8 @@ class Case:
         * case.electric.bipolar_egm.points
         * case.electric.unipolar_egm.points
         * case.electric.landmark_points.points
+        * case.ablation.auto_index.ablation_points.points
+        * case.ablation.force.points
 
         case.electric.surface.nearest_point and .normals are not transformed directly;
         instead they are recomputed from the transformed mesh (see `_create_electric_surface`),
@@ -219,6 +239,12 @@ class Case:
             proximal_points, distal_points = self.electric.unipolar_egm._points.T
             self.electric.unipolar_egm._points[:, :, 0] = transform.apply(proximal_points.T)
             self.electric.unipolar_egm._points[:, :, 1] = transform.apply(distal_points.T)
+
+        if self.ablation is not None:
+            if _is_valid_point_set(self.ablation.auto_index.ablation_points._points):
+                self.ablation.auto_index.ablation_points._points[:] = transform.apply(self.ablation.auto_index.ablation_points._points)
+            if _is_valid_point_set(self.ablation.force.points):
+                self.ablation.force.points[:] = transform.apply(self.ablation.force.points)
 
         if self.electric.bipolar_egm._points is not None:
             mesh = self.create_mesh()
