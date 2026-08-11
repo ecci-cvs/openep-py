@@ -16,3 +16,4 @@ trimesh
 shapely
 meshio
 pynrrd
+pycpd @ git+https://github.com/siavashk/pycpd.git@e5ca02d2501fb4b633c1664de939c336ffa2349e
