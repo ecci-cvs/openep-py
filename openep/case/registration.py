@@ -175,6 +175,10 @@ class CPDRegistration:
                     fit_target_points,
                 )
 
+        # exposed so callers can see what the fit is actually running on
+        self.n_fit_source_points = fit_source_points.shape[0]
+        self.n_fit_target_points = fit_target_points.shape[0]
+
         registration_class = _CPD_REGISTRATION_CLASSES[method]
         if method == 'deformable' and 'source_id' in kwargs and 'target_id' in kwargs:
             registration_class = pycpd.ConstrainedDeformableRegistration
@@ -185,10 +189,18 @@ class CPDRegistration:
             **kwargs,
         )
 
-    def run(self) -> Transform:
-        """Run the CPD iteration loop and return the fitted Transform."""
+    def run(self, should_stop=None) -> Transform:
+        """Run the CPD iteration loop and return the fitted Transform.
+
+        Args:
+            should_stop (callable, optional): checked before each iteration; if it
+                returns True, iteration stops early and the Transform fitted so far
+                (from however many iterations completed) is returned.
+        """
 
         for iteration in range(1, self.n_iterations + 1):
+            if should_stop is not None and should_stop():
+                break
             self._registration.iterate()
             if self.progress_callback is not None:
                 self.progress_callback(iteration, self._registration.TY)
