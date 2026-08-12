@@ -23,6 +23,7 @@ that other registration methods can live alongside it here in future.
 """
 
 import numpy as np
+import open3d as o3d
 import pycpd
 import pyvista
 from vtkmodules.vtkCommonTransforms import vtkLandmarkTransform
@@ -31,7 +32,7 @@ from .case_routines import calculate_distance
 from .transforms import Transform, MatrixTransform, DeformationFieldTransform
 from ..mesh.decimation import decimate_mesh
 
-__all__ = ['CPDRegistration', 'LandmarkRegistration']
+__all__ = ['CPDRegistration', 'LandmarkRegistration', 'ICPRegistration']
 
 
 _CPD_REGISTRATION_CLASSES = {
@@ -269,5 +270,105 @@ class LandmarkRegistration:
 
         vtk_matrix = transform.GetMatrix()
         matrix = np.array([[vtk_matrix.GetElement(row, column) for column in range(4)] for row in range(4)])
+
+        return MatrixTransform(matrix)
+
+
+def _default_max_correspondence_distance(points: np.ndarray) -> float:
+    """A scale-aware default `max_correspondence_distance` for ICP,
+    10% of the point cloud's bounding-box diagonal.
+    """
+
+    extent = points.max(axis=0) - points.min(axis=0)
+    return 0.1 * np.linalg.norm(extent)
+
+
+_ICP_WITH_SCALING = {
+    'rigid': False,
+    'similarity': True,
+}
+
+
+class ICPRegistration:
+    """Iterative Closest Point registration between two point clouds, using Open3D
+    (`open3d.pipelines.registration.registration_icp` with point-to-point estimation).
+
+    Args:
+        source_points (np.ndarray): Nx3 array of points to be registered onto `target_points`.
+        target_points (np.ndarray): Mx3 array of points to register `source_points` onto.
+        method (str): one of 'rigid' (translation and rotation only) or 'similarity'
+            (translation, rotation, and isotropic scaling) - maps to Open3D's
+            `TransformationEstimationPointToPoint(with_scaling=...)`.
+        max_correspondence_distance (float, optional): maximum distance between a source/
+            target point pair for it to be treated as a correspondence at each iteration.
+            Defaults to `_default_max_correspondence_distance(target_points)` if not given.
+        max_iterations (int): maximum number of ICP iterations.
+        relative_fitness (float): convergence threshold on the relative change in fitness
+            (fraction of points with a correspondence) between iterations.
+        relative_rmse (float): convergence threshold on the relative change in inlier RMSE
+            between iterations.
+        init (np.ndarray, optional): initial 4x4 transform guess. Defaults to matching
+            `source_points`'s centroid onto `target_points`'s (translation only, no rotation/
+            scale) - usually improves convergence when the initial poses are far apart.
+    """
+
+    def __init__(
+        self,
+        source_points: np.ndarray,
+        target_points: np.ndarray,
+        method: str = 'rigid',
+        max_correspondence_distance: float = None,
+        max_iterations: int = 100,
+        relative_fitness: float = 1e-6,
+        relative_rmse: float = 1e-6,
+        init: np.ndarray = None,
+    ):
+        if method not in _ICP_WITH_SCALING:
+            raise ValueError(
+                f"Unknown ICP registration method: {method!r}. Must be one of {list(_ICP_WITH_SCALING)}."
+            )
+
+        self.source_points = np.asarray(source_points, dtype=float)
+        self.target_points = np.asarray(target_points, dtype=float)
+        self.method = method
+        self.max_iterations = max_iterations
+        self.relative_fitness = relative_fitness
+        self.relative_rmse = relative_rmse
+
+        if max_correspondence_distance is None:
+            max_correspondence_distance = _default_max_correspondence_distance(self.target_points)
+        self.max_correspondence_distance = max_correspondence_distance
+
+        if init is None:
+            init = np.eye(4)
+            init[:3, 3] = self.target_points.mean(axis=0) - self.source_points.mean(axis=0)
+        self.init = np.asarray(init, dtype=float)
+
+    def run(self) -> Transform:
+        """Fit the ICP transform and return the fitted Transform."""
+
+        source = o3d.geometry.PointCloud()
+        source.points = o3d.utility.Vector3dVector(self.source_points)
+        target = o3d.geometry.PointCloud()
+        target.points = o3d.utility.Vector3dVector(self.target_points)
+
+        result = o3d.pipelines.registration.registration_icp(
+            source,
+            target,
+            self.max_correspondence_distance,
+            self.init,
+            o3d.pipelines.registration.TransformationEstimationPointToPoint(
+                with_scaling=_ICP_WITH_SCALING[self.method],
+            ),
+            o3d.pipelines.registration.ICPConvergenceCriteria(
+                relative_fitness=self.relative_fitness,
+                relative_rmse=self.relative_rmse,
+                max_iteration=self.max_iterations,
+            ),
+        )
+
+        matrix = np.asarray(result.transformation)
+        if not np.all(np.isfinite(matrix)):
+            raise ValueError("ICP produced a non-finite transform matrix.")
 
         return MatrixTransform(matrix)

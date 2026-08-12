@@ -13,4 +13,4 @@ from .case_routines import (
     bipolar_from_unipolar_surface_points,
 )
 from .transforms import Transform, MatrixTransform, DeformationFieldTransform
-from .registration import CPDRegistration, LandmarkRegistration
+from .registration import CPDRegistration, LandmarkRegistration, ICPRegistration
