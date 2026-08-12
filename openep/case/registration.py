@@ -37,8 +37,16 @@ __all__ = ['CPDRegistration', 'LandmarkRegistration', 'ICPRegistration']
 
 _CPD_REGISTRATION_CLASSES = {
     'rigid': pycpd.RigidRegistration,
+    'similarity': pycpd.RigidRegistration,
     'affine': pycpd.AffineRegistration,
     'deformable': pycpd.DeformableRegistration,
+}
+
+# pycpd.RigidRegistration fits a similarity transform (rotation + translation + isotropic
+# scale) by default (scale=True) - 'rigid' forces scale off so it's a true rigid-body fit.
+_CPD_RIGID_REGISTRATION_SCALE = {
+    'rigid': False,
+    'similarity': True,
 }
 
 
@@ -105,13 +113,16 @@ class CPDRegistration:
     """Coherent Point Drift registration between two point clouds, using pycpd.
 
     Call `run()` to perform the registration; it returns a `Transform` (see :mod:`openep.case.transforms`)
-    mapping source points onto target points - a `MatrixTransform` for rigid/affine
+    mapping source points onto target points - a `MatrixTransform` for rigid/similarity/affine
     registration, or a `DeformationFieldTransform` for deformable registration.
 
     Args:
         source_points (np.ndarray): Nx3 array of points to be registered onto `target_points`.
         target_points (np.ndarray): Mx3 array of points to register `source_points` onto.
-        method (str): one of 'rigid', 'affine', 'deformable'.
+        method (str): one of 'rigid' (translation and rotation only), 'similarity'
+            (translation, rotation, and isotropic scaling - pycpd.RigidRegistration's
+            default), 'affine' (translation, rotation, and non-isotropic scaling), or
+            'deformable'.
         n_iterations (int): number of CPD iterations to run.
         progress_callback (callable, optional): called after each iteration as
             `progress_callback(iteration, source_points)`, where `source_points` is pycpd's
@@ -184,6 +195,8 @@ class CPDRegistration:
         registration_class = _CPD_REGISTRATION_CLASSES[method]
         if method == 'deformable' and 'source_id' in kwargs and 'target_id' in kwargs:
             registration_class = pycpd.ConstrainedDeformableRegistration
+        if method in _CPD_RIGID_REGISTRATION_SCALE:
+            kwargs = dict(kwargs, scale=_CPD_RIGID_REGISTRATION_SCALE[method])
 
         self._registration = registration_class(
             X=fit_target_points,
@@ -211,7 +224,7 @@ class CPDRegistration:
 
     def _build_transform(self) -> Transform:
 
-        if self.method == 'rigid':
+        if self.method in ('rigid', 'similarity'):
             return MatrixTransform(_rigid_registration_to_matrix(self._registration))
 
         if self.method == 'affine':
