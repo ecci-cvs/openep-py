@@ -25,12 +25,13 @@ that other registration methods can live alongside it here in future.
 import numpy as np
 import pycpd
 import pyvista
+from vtkmodules.vtkCommonTransforms import vtkLandmarkTransform
 
 from .case_routines import calculate_distance
 from .transforms import Transform, MatrixTransform, DeformationFieldTransform
 from ..mesh.decimation import decimate_mesh
 
-__all__ = ['CPDRegistration']
+__all__ = ['CPDRegistration', 'LandmarkRegistration']
 
 
 _CPD_REGISTRATION_CLASSES = {
@@ -216,3 +217,57 @@ class CPDRegistration:
             return MatrixTransform(_affine_registration_to_matrix(self._registration))
 
         return DeformationFieldTransform(self._registration)
+
+
+_LANDMARK_TRANSFORM_MODES = {
+    'rigid': 'SetModeToRigidBody',
+    'similarity': 'SetModeToSimilarity',
+    'affine': 'SetModeToAffine',
+}
+
+
+class LandmarkRegistration:
+    """Landmark-pair registration between two point clouds, using VTK's `vtkLandmarkTransform`.
+
+    Finds the transformation that best aligns `source_points` onto `target_points` in the
+    least-squares sense, given known point-to-point correspondence (`source_points[i]`
+    corresponds to `target_points[i]`). Call `run()` to perform the registration; it returns
+    a `MatrixTransform`.
+
+    Args:
+        source_points (np.ndarray): Nx3 array of points to be registered onto `target_points`.
+        target_points (np.ndarray): Nx3 array of points to register `source_points` onto -
+            `target_points[i]` must correspond to `source_points[i]`.
+        method (str): one of 'rigid' (translation and rotation only), 'similarity'
+            (translation, rotation, and isotropic scaling), or 'affine' (translation,
+            rotation, and non-isotropic scaling).
+    """
+
+    def __init__(
+        self,
+        source_points: np.ndarray,
+        target_points: np.ndarray,
+        method: str = 'similarity',
+    ):
+        if method not in _LANDMARK_TRANSFORM_MODES:
+            raise ValueError(
+                f"Unknown landmark registration method: {method!r}. Must be one of {list(_LANDMARK_TRANSFORM_MODES)}."
+            )
+
+        self.source_points = np.asarray(source_points, dtype=float)
+        self.target_points = np.asarray(target_points, dtype=float)
+        self.method = method
+
+    def run(self) -> Transform:
+        """Fit the landmark transform and return the fitted Transform."""
+
+        transform = vtkLandmarkTransform()
+        transform.SetSourceLandmarks(pyvista.PolyData(self.source_points).GetPoints())
+        transform.SetTargetLandmarks(pyvista.PolyData(self.target_points).GetPoints())
+        getattr(transform, _LANDMARK_TRANSFORM_MODES[self.method])()
+        transform.Update()
+
+        vtk_matrix = transform.GetMatrix()
+        matrix = np.array([[vtk_matrix.GetElement(row, column) for column in range(4)] for row in range(4)])
+
+        return MatrixTransform(matrix)
