@@ -19,6 +19,8 @@
 """Mesh decimation - reducing a mesh's point count while preserving its overall shape.
 """
 
+import os
+
 import pyvista
 
 __all__ = ['decimate_mesh']
@@ -40,10 +42,18 @@ def _decimate_acvd(mesh: pyvista.PolyData, n_points: int) -> pyvista.PolyData:
 
     import pyacvd  # optional dependency, only needed for this method
 
-    clustering = pyacvd.Clustering(mesh)
-    clustering.cluster(n_points)
-
-    return clustering.create_mesh()
+    # try single-threaded execution to avoid oversubscription
+    previous_omp_num_threads = os.environ.get('OMP_NUM_THREADS')
+    os.environ['OMP_NUM_THREADS'] = '1'
+    try:
+        clustering = pyacvd.Clustering(mesh)
+        clustering.cluster(n_points)
+        return clustering.create_mesh()
+    finally:
+        if previous_omp_num_threads is None:
+            os.environ.pop('OMP_NUM_THREADS', None)
+        else:
+            os.environ['OMP_NUM_THREADS'] = previous_omp_num_threads
 
 
 _DECIMATION_METHODS = {
