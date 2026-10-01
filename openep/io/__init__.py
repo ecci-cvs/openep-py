@@ -1,1 +1,1 @@
-__all__ = ['readers', 'writers']
+__all__ = ['readers', 'writers', 'egm_readers']

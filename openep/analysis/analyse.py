@@ -18,6 +18,7 @@
 
 """Module containing analysis classes"""
 from ._conduction_velocity import *
+from sklearn.neighbors import KDTree
 from .vector_field_tracer import VectorFieldTracer
 from ..case.case_routines import interpolate_general_cloud_points_onto_surface
 
@@ -53,7 +54,8 @@ class ConductionVelocity:
     Attributes:
         _case (Case): Internal reference to the case data.
         values (np.ndarray): The calculated conduction velocity values.
-        centers (np.ndarray): The centers corresponding to the conduction velocity values.
+        centers (np.ndarray): The coordinates corresponding to the conduction velocity values.
+        projected_centers (np.ndarray): The coordinates corresponding to the conduction velocity values at the time of interpolation.
 
     Parameters:
         case (Case): The case data from which conduction velocity is to be calculated.
@@ -62,6 +64,7 @@ class ConductionVelocity:
         self._case = case
         self.values = None
         self.centers = None
+        self.projected_centers = None
 
     def calculate_cv(
             self,
@@ -133,6 +136,7 @@ class ConductionVelocity:
                - self._case.electric.annotations.reference_activation_time[include])
 
         cv_method = supported_cv_methods[method]
+
         if method == 'rbf':
             ignore_interpolation = method_kwargs.pop('ignore_interpolation', False)
             self.values, self.centers, field = cv_method(bipolar_egm_pts, lat, self._case, **method_kwargs)
@@ -143,11 +147,17 @@ class ConductionVelocity:
         else:
             self.values, self.centers = cv_method(bipolar_egm_pts, lat, self._case, **method_kwargs)
 
+        # adjust centers to nearest mesh points
+        _mesh = self._case.create_mesh()
+        tree = KDTree(_mesh.points, leaf_size=2)
+        dist, ind = tree.query(self.centers, k=1)
+        self.projected_centers = _mesh.points[ind.flat]
+
         if apply_scalar_field:
             self._case.fields.conduction_velocity = interpolate_general_cloud_points_onto_surface(
                 case=self._case,
                 cloud_values=self.values,
-                cloud_points=self.centers,
+                cloud_points=self.projected_centers,
                 **interpolation_kws
             )
 
@@ -178,6 +188,7 @@ class Divergence:
         self,
         include=None,
         output_binary_field=False,
+        force_case_lat=False,
         apply_scalar_field=True,
         interpolation_kws=None,
     ):
@@ -197,6 +208,9 @@ class Divergence:
                                                  'output_binary_field' is True) are applied as a scalar field to
                                                  the case object.
                                                  Defaults to True.
+
+            force_case_lat (bool, optional): Default False, prevents recalculating LAT and uses the LAT in the case
+                                            object.
 
             interpolation_kws (dict, optional): Keyword arguments for interpolation function.
                                     > interpolate_general_cloud_points_onto_surface(**interpolation_kws)
@@ -229,6 +243,7 @@ class Divergence:
             local_activation_time=lat,
             output_binary_field=output_binary_field,
             interpolation_kws=interpolation_kws,
+            force_case_lat=force_case_lat,
         )
 
         if apply_scalar_field:

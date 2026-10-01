@@ -16,3 +16,4 @@ trimesh
 shapely
 meshio
 pynrrd
+vtk==9.3.1
