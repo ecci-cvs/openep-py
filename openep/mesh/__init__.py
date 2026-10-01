@@ -1,4 +1,4 @@
-__all__ = ['mesh_routines']
+__all__ = ['mesh_routines', 'decimation']
 
 from .mesh_routines import (
     point_data_to_cell_data,
@@ -12,3 +12,4 @@ from .mesh_routines import (
     low_field_area_per_region,
     mean_field_per_region,
 )
+from .decimation import decimate_mesh
