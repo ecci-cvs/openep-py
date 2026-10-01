@@ -125,7 +125,7 @@ def plane_fitting(
 
     for egm_i in range(bipolar_egm_pts.shape[0]):
 
-        if len(all_nns[egm_i]) >= min_n_nearest_neighbours:
+        if len(all_nns[egm_i]) > min_n_nearest_neighbours:
             x1, x2, x3 = np.transpose(np.vstack((bipolar_egm_pts[egm_i], all_nns[egm_i])))
             m = np.append(local_activation_time[egm_i], local_activation_time[all_nn_indices[egm_i]])
 
@@ -146,6 +146,9 @@ def plane_fitting(
             cv_centroids[egm_i] = [x, y, z]
         else:
             cv_centroids[egm_i] = bipolar_egm_pts[egm_i]
+
+    cv_centroids = cv_centroids[~np.isnan(cv_values)]
+    cv_values = cv_values[~np.isnan(cv_values)]
 
     return cv_values, cv_centroids
 
@@ -242,10 +245,15 @@ def triangulation(
         else:
             cv_values[cell_i] = np.nan
 
-        centroid_i = np.mean([point_O, point_A, point_B], axis=0)
+        # centroid_i = np.mean([point_O, point_A, point_B], axis=0)
+        centroid_i = point_O
         cv_centroids[cell_i] = centroid_i
 
     # return np.array(cv_values), np.array(cv_centroids)
+    nan_indices = np.isnan(cv_values)
+    cv_values = cv_values[~nan_indices]
+    cv_centroids = cv_centroids[~nan_indices]
+
     return cv_values, cv_centroids
 
 
@@ -357,23 +365,20 @@ def radial_basis_function(
 
     mesh['values'] = lat_interpolated
     deriv = mesh.compute_derivative('values')
-    gradients = deriv['gradient']
+    gradient = deriv['gradient']
 
-    grad_norm_sq = gradients[:, 0] ** 2 + gradients[:, 1] ** 2 + gradients[:, 2] ** 2
-    # CV at mesh points (already interpolated)
-    cv_interpolated = 1 / np.sqrt(grad_norm_sq)
+    cvx = gradient[:, 0] / np.sum(np.power(gradient, 2), axis=1)
+    cvy = gradient[:, 1] / np.sum(np.power(gradient, 2), axis=1)
+    cvz = gradient[:, 2] / np.sum(np.power(gradient, 2), axis=1)
+    cv_interpolated = np.sqrt(np.power(cvx, 2) + np.power(cvy, 2) + np.power(cvz, 2))
 
     tree = KDTree(mesh.points, leaf_size=leaf_size)
     _, indices = tree.query(bipolar_egm_pts, k=1)
 
-    # We are using the cv_centroids at the bi_egm location
-    # rather than the ones moved closer to the mesh
-    # cv_centroids = mesh.points[indices.flatten()]
-    cv_centroids = bipolar_egm_pts
+    cv_centroids = mesh.points[indices.flatten()]
     cv_values = cv_interpolated[indices.flatten()]
 
     return cv_values, cv_centroids, cv_interpolated
-
 
 def divergence(
         case,
@@ -382,6 +387,7 @@ def divergence(
         collision_threshold=-1,
         focal_threshold=1,
         output_binary_field=False,
+        force_case_lat=False,
         interpolation_kws=None,
 ):
     """
@@ -407,6 +413,9 @@ def divergence(
                                               and 0 otherwise. If False, the continuous divergence field
                                               is returned. Defaults to False.
 
+        force_case_lat (bool, optional): Default False, prevents recalculating LAT and uses the LAT in the case
+                                        object.
+
         interpolation_kws (dict, optional): Keyword arguments for interpolation function.
                                             > interpolate_general_cloud_points_onto_surface(**interpolation_kws)
                                             Defaults to None.
@@ -420,36 +429,54 @@ def divergence(
                  regions based on the 'output_binary_field' parameter.
     """
 
+    # The note was requested by Steven to set Interpolation to the same as RBF (and not hardcoded to RBF Legacy)
     temp_mesh = case.create_mesh()
     basic_mesh = pv.PolyData(temp_mesh.points, temp_mesh.faces)
     interpolation_kws = dict() if interpolation_kws is None else interpolation_kws
 
-    tree = KDTree(temp_mesh.points, leaf_size=2)
-    dist, ind = tree.query(bipolar_egm_pts, k=1)
-    closest_mesh_points_to_egm_points = temp_mesh.points[ind.flat]
+    if force_case_lat:
+        lat_interpolated = case.fields.local_activation_time
+    else:
+        tree = KDTree(temp_mesh.points, leaf_size=2)
+        dist, ind = tree.query(bipolar_egm_pts, k=1)
+        closest_mesh_points_to_egm_points = temp_mesh.points[ind.flat]
 
-    interpolated_scalar = interpolate_general_cloud_points_onto_surface(
-        case=case,
-        cloud_values=local_activation_time,
-        cloud_points=closest_mesh_points_to_egm_points,
-        **interpolation_kws
-    )
+        lat_interpolated = interpolate_general_cloud_points_onto_surface(
+            case=case,
+            cloud_values=local_activation_time,
+            cloud_points=closest_mesh_points_to_egm_points,
+            **interpolation_kws
+        )
 
-    basic_mesh['LAT_scalar'] = interpolated_scalar
-    derivative = basic_mesh.compute_derivative(scalars='LAT_scalar')
+    basic_mesh['LAT_scalar'] = lat_interpolated
+    deriv = basic_mesh.compute_derivative(scalars='LAT_scalar')
 
-    cv_direction = derivative['gradient'] / np.sum(derivative['gradient'] ** 2, axis=1)[:, np.newaxis]
-    magnitude = np.sqrt(np.sum(cv_direction ** 2, axis=1))
-    norm_cv_direction = cv_direction / magnitude[:, np.newaxis]
+    cv_x = deriv['gradient'][:, 0] / np.sum(np.power(deriv['gradient'], 2), axis=1)
+    cv_y = deriv['gradient'][:, 1] / np.sum(np.power(deriv['gradient'], 2), axis=1)
+    cv_z = deriv['gradient'][:, 2] / np.sum(np.power(deriv['gradient'], 2), axis=1)
+
+    direction = np.ndarray(shape=(len(cv_x), 3))
+    cv_direction = np.ndarray(shape=(len(cv_x), 3))
+    for i in range(len(cv_x)):
+        direction[i][0] = cv_x[i] / np.sqrt(np.sum(np.power(cv_x[i], 2) + np.power(cv_y[i], 2) + np.power(cv_z[i], 2)))
+        direction[i][1] = cv_y[i] / np.sqrt(np.sum(np.power(cv_x[i], 2) + np.power(cv_y[i], 2) + np.power(cv_z[i], 2)))
+        direction[i][2] = cv_z[i] / np.sqrt(np.sum(np.power(cv_x[i], 2) + np.power(cv_y[i], 2) + np.power(cv_z[i], 2)))
+        cv_direction[i][0] = cv_x[i]
+        cv_direction[i][1] = cv_y[i]
+        cv_direction[i][2] = cv_z[i]
+
+    # cv_direction = derivative['gradient'] / np.sum(derivative['gradient'] ** 2, axis=1)[:, np.newaxis]
+    # magnitude = np.sqrt(np.sum(cv_direction ** 2, axis=1))
+    # norm_cv_direction = cv_direction / magnitude[:, np.newaxis]
 
     basic_mesh['activation_direction'] = cv_direction
     div = basic_mesh.compute_derivative(scalars='activation_direction', divergence=True)
-    divergence = div['divergence']
+    divergence_field = div['divergence']
 
     if output_binary_field:
-        divergence = np.where((divergence < collision_threshold) | (divergence > focal_threshold), 1, 0)
+        divergence_field = np.where((divergence_field < collision_threshold) | (divergence_field > focal_threshold), 1, 0)
 
-    return norm_cv_direction, divergence
+    return direction, divergence_field
 
 
 def exclude_collision_points(

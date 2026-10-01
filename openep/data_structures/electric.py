@@ -464,7 +464,7 @@ class Electric:
         bipolar_egm: Electrogram = None,
         unipolar_egm: Electrogram = None,
         reference_egm: Electrogram = None,
-        ecg: np.ndarray = None,
+        ecg: ECG = None,
         impedance: Impedance = None,
         surface: ElectricSurface = None,
         annotations: Annotations = None,
@@ -795,7 +795,8 @@ def extract_electric_data(electric_data):
         electric_data['electrodeNames_uni'] = np.array([])
     else:
         electric_data['egmUni'] = electric_data['egmUni'].astype(float)
-        electric_data['egmUniX'] = electric_data['egmUniX'].astype(float)
+        egmUniX = electric_data['egmUniX'].astype(float)
+        electric_data['egmUniX'] = np.expand_dims(egmUniX, axis=-1) if egmUniX.ndim == 2 else egmUniX
         electric_data['voltages']['unipolar'] = electric_data['voltages']['unipolar'].astype(float)
     if 'electrodeNames_uni' not in electric_data:
             electric_data['electrodeNames_uni'] = np.full((len(electric_data['egmUni']), 2), fill_value="", dtype=str)
@@ -850,9 +851,14 @@ def extract_electric_data(electric_data):
     else:
         electric_data['ecgGain'] = electric_data['ecgGain'].astype(float)
 
+    # EGM for situations where [nan nan] -> [[nan], [nan]]
+    egm = electric_data['egm'].astype(float)
+    if np.all(np.isnan(egm)):
+        egm = egm.reshape(-1, 1)
+
     # Create objects to pass to Electric
     bipolar_egm = Electrogram(
-        egm=electric_data['egm'].astype(float),
+        egm=egm,
         points=electric_data['egmX'].astype(float),
         voltage=electric_data['voltages']['bipolar'].astype(float),
         gain=electric_data['egmGain'],
