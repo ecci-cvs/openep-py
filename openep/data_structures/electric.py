@@ -444,8 +444,8 @@ class Electric:
             to ignore these when e.g. interpolating, plotting.
         bipolar_egm (Electrogram): The bipolar electrograms, coordinates of mapping points,
             names of the electrodes, and voltages.
-        unipolar_egm (Electrogram): The unipolar electrograms, coordinates of the two unipole
-            electrodes, names of the two unipole electrodes, and voltages.
+        unipolar_egm (Electrogram): The unipolar electrograms, electrode coordinates,
+            names of the exported components, and voltages.
         reference_egm (Electrogram): The reference electrograms for each mapping point.
         ecg (np.ndarray): The surface electrocardiogram for each mapping point.
         impedance (Impedance): The time and values of impedance traces for each mapping point
@@ -795,15 +795,34 @@ def extract_electric_data(electric_data):
         electric_data['electrodeNames_uni'] = np.array([])
     else:
         electric_data['egmUni'] = electric_data['egmUni'].astype(float)
-        egmUniX = electric_data['egmUniX'].astype(float)
-        electric_data['egmUniX'] = np.expand_dims(egmUniX, axis=-1) if egmUniX.ndim == 2 else egmUniX
+        electric_data['egmUniX'] = electric_data['egmUniX'].astype(float)
         electric_data['voltages']['unipolar'] = electric_data['voltages']['unipolar'].astype(float)
-    if 'electrodeNames_uni' not in electric_data:
-            electric_data['electrodeNames_uni'] = np.full((len(electric_data['egmUni']), 2), fill_value="", dtype=str)
-    if electric_data['electrodeNames_uni'].ndim == 2:
-        electric_data['electrodeNames_uni'][:, 0] = _decode_string_arrays(electric_data['electrodeNames_uni'][:, 0])
-        electric_data['electrodeNames_uni'][:, 1] = _decode_string_arrays(electric_data['electrodeNames_uni'][:, 1])
-    electric_data['electrodeNames_uni'] =  electric_data['electrodeNames_uni'].astype(str)
+
+    unipolar = electric_data['egmUni']
+    n_components = 0
+    if unipolar.size > 0:
+        if unipolar.ndim not in (2, 3):
+            raise ValueError('egmUni must have point, sample and optional component dimensions.')
+        n_points = unipolar.shape[0]
+        n_components = unipolar.shape[2] if unipolar.ndim == 3 else 1
+        coordinates = electric_data['egmUniX']
+        coordinate_shapes = [(n_points, 3, n_components)]
+        if n_components == 1:
+            coordinate_shapes.append((n_points, 3))
+        if coordinates.size > 0 and coordinates.shape not in coordinate_shapes:
+            raise ValueError('egmUniX dimensions do not match egmUni points and components.')
+
+        labels = np.asarray(electric_data.get('electrodeNames_uni', np.array([])))
+        if labels.size == 0:
+            labels = np.full((n_points, n_components), '', dtype=str)
+        elif labels.ndim < 2 and (n_points == 1 or n_components == 1):
+            if labels.size == n_points * n_components:
+                labels = labels.reshape(n_points, n_components)
+        if labels.shape != (n_points, n_components):
+            raise ValueError('electrodeNames_uni dimensions do not match egmUni points and components.')
+        electric_data['electrodeNames_uni'] = _decode_string_arrays(labels.ravel()).reshape(labels.shape).astype(str)
+    else:
+        electric_data['electrodeNames_uni'] = np.array([], dtype=str)
 
     # Make ecgs correct shape
     ecg_dims = electric_data['ecg'].ndim
@@ -833,7 +852,9 @@ def extract_electric_data(electric_data):
 
         if electric_data[f'egm{egm_type}'].size == 0:
             electric_data[f'egm{egm_type}Gain'] = None
-        elif f'egm{egm_type}Gain' not in electric_data:
+        elif f'egm{egm_type}Gain' not in electric_data or (
+            egm_type == 'Uni' and electric_data['egmUniGain'].size == 0
+        ):
             electric_data[f'egm{egm_type}Gain'] = np.full(
                 electric_data[f'egm{egm_type}'].shape[0],
                 fill_value=default_gain_value,
@@ -842,9 +863,16 @@ def extract_electric_data(electric_data):
         else:
             electric_data[f'egm{egm_type}Gain'] = electric_data[f'egm{egm_type}Gain'].astype(float)
 
-    # we need a gain value for each electrode of the unipolar signals
-    if electric_data['egmUniGain'] is not None and electric_data['egmUniGain'].ndim == 1:
-        electric_data['egmUniGain'] = np.tile(electric_data['egmUniGain'], reps=(2, 1)).T
+    # A per-point gain applies to every exported component, not always two.
+    if electric_data['egmUniGain'] is not None:
+        gain = electric_data['egmUniGain']
+        if gain.ndim == 1 and gain.shape == (unipolar.shape[0],):
+            gain = gain[:, np.newaxis]
+        if gain.shape == (unipolar.shape[0], 1):
+            gain = np.tile(gain, (1, n_components))
+        if gain.shape != (unipolar.shape[0], n_components):
+            raise ValueError('egmUniGain dimensions do not match egmUni points and components.')
+        electric_data['egmUniGain'] = gain
 
     if 'ecgGain' not in electric_data or electric_data['ecgGain'].size == 0:
         electric_data['ecgGain'] = None

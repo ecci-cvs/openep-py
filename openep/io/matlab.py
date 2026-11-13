@@ -23,7 +23,11 @@ __all__ = []
 def _dereference_strings(file_pointer, references):
     """Resolve an array of references that point to strings."""
 
-    return np.asarray([file_pointer.get(ref)[:].tobytes().decode('utf-16') for ref in references])
+    strings = []
+    for ref in references:
+        target = file_pointer.get(ref)
+        strings.append('' if target.attrs.get('MATLAB_empty', 0) else target[:].tobytes().decode('utf-16'))
+    return np.asarray(strings, dtype=str)
 
 
 def _decode_string(ints):
@@ -76,13 +80,19 @@ def _visit_mat_v73_(file_pointer):
             values = value[:]
 
             if key in strings_to_dereference:
-                values = _dereference_strings(
-                    file_pointer=file_pointer,
-                    references=values.ravel(),
-                )
+                # MATLAB stores empty-array dimensions here, not references.
+                if value.attrs.get('MATLAB_empty', 0):
+                    values = np.array([], dtype=str)
+                else:
+                    values = _dereference_strings(
+                        file_pointer=file_pointer,
+                        references=values.ravel(),
+                    )
+                    if key == 'userdata/electric/electrodeNames_uni':
+                        values = values.reshape(value.shape)
 
             elif key in strings_to_decode:
-                values = _decode_string(values.ravel())
+                values = '' if value.attrs.get('MATLAB_empty', 0) else _decode_string(values.ravel())
 
             elif key in impedances_to_dereference:
                 values = _dereference_impedances(
@@ -114,16 +124,15 @@ def _mat_v73_transform_arrays(data):
         if not isinstance(data[key], np.ndarray):
             continue
 
-        if data[key].shape[0] == 1:
+        if key == 'userdata/electric/electrodeNames_uni':
+            data[key] = data[key].T
+        elif data[key].shape[0] == 1:
             data[key] = data[key].ravel()
         else:
             data[key] = data[key].T
 
         if key in cast_to_int:
             data[key] = data[key].astype(int)
-
-        if key == 'userdata/electric/electrodeNames_uni':
-            data[key] = data[key].reshape(2, -1).T
 
         if 'userdata/surface/fibres' in key:
             data[key] = data[key].reshape(3, -1).T

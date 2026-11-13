@@ -100,6 +100,11 @@ def load_openep_mat(filename, name=None):
     Currently, cases can only be loaded from files created using the MATLAB
     implementation of OpenEP.
 
+    Missing ECGs remain absent. Unipolar electrode names and gains follow the
+    exported component count; single-component waveform and coordinate arrays
+    retain their two-dimensional layout. Loading a case does not establish
+    support for every component in downstream display or analysis tools.
+
     Args:
         filename (str): path to MATLAB file to be loaded (including the .mat
             extension.)
